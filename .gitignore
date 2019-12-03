@@ -1,0 +1,17 @@
+.DS_Store
+/.build
+/Packages
+/*.xcodeproj
+
+__pycache__
+
+temp/
+
+/workdir/
+/workdir-backup.zip
+/other-stuff/
+/Configurations/*
+
+/env.sh
+
+!.gitkeep

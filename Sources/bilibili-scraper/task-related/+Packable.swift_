@@ -1,0 +1,148 @@
+import BilibiliAPI
+import Foundation
+
+fileprivate func parsePageNumber(_ _pn: Any) -> Int? {
+    let pn = _pn as! Int32
+    if pn == -1 {
+        return nil
+    }
+    return Int(pn)
+}
+
+extension SearchQuery: Packable {
+    public static let packFormat = "<≈sbbii"
+    public var packValues: [Any] {
+        return [
+            self.keyword,
+            Int8(self.order?.int ?? -1),
+            Int8(self.duration?.rawValue ?? -1),
+            Int32(self.region?.rawValue ?? -1),
+            Int32(self.pageNumber ?? -1)
+        ]
+    }
+    public init(from v: [Any]) {
+        self.init(keyword: v[0] as! String,
+                  order: SearchOrder(from: Int(v[1] as! Int8)),
+                  duration: { () -> SearchDuration? in
+                    let d = v[2] as! Int8
+                    return d == -1 ? nil : SearchDuration(rawValue: Int(d))
+        }(), region: { () -> VideoRegion? in
+            let r = v[3] as! Int32
+            return r == -1 ? nil : VideoRegion(rawValue: Int(r))
+        }(), pageNumber: parsePageNumber(v[4]))
+    }
+}
+
+//extension TagTabInfoQuery: Packable {
+//    public static let packFormat = ""
+//    public var packValues: [Any] {
+//        return [
+//
+//        ]
+//    }
+//    public init(from v: [Unpackable]) {
+//        <#code#>
+//    }
+//}
+
+extension TagDetailQuery: Packable {
+    public static let packFormat = "<Qi"
+    public var packValues: [Any] {
+        return [self.tid, Int32(self.pageNumber ?? -1)]
+    }
+    public init(from v: [Any]) {
+        self.init(tid: v[0] as! UInt64, pageNumber: parsePageNumber(v[1]))
+    }
+}
+
+extension TagTopQuery: Packable {
+    public static let packFormat = "<Qi"
+    public var packValues: [Any] {
+        return [self.tid, Int32(self.pageNumber ?? -1)]
+    }
+    public init(from v: [Any]) {
+        self.init(tid: v[0] as! UInt64, pageNumber: parsePageNumber(v[1]))
+    }
+}
+
+extension VideoInfoQuery: Packable {
+    public static let packFormat = "<Q"
+    public var packValues: [Any] {
+        return [self.aid]
+    }
+    public init(from v: [Any]) {
+        self.init(aid: v[0] as! UInt64)
+    }
+}
+
+extension VideoRelatedVideosQuery: Packable {
+    public static let packFormat = "<Q"
+    public var packValues: [Any] {
+        return [self.aid]
+    }
+    public init(from v: [Any]) {
+        self.init(aid: v[0] as! UInt64)
+    }
+}
+
+extension VideoTagsQuery: Packable {
+    public static let packFormat = "<Q"
+    public var packValues: [Any] {
+        return [self.aid]
+    }
+    public init(from v: [Any]) {
+        self.init(aid: v[0] as! UInt64)
+    }
+}
+
+extension UserSubmissionsQuery: Packable {
+    public static let packFormat = "<Qi"
+    public var packValues: [Any] {
+        return [self.uid, Int32(self.pageNumber ?? -1)]
+    }
+    public init(from v: [Any]) {
+        self.init(uid: v[0] as! UInt64, pageNumber: parsePageNumber(v[1]))
+    }
+}
+
+extension UserFavoriteFolderListQuery: Packable {
+    public static let packFormat = "<Q"
+    public var packValues: [Any] {
+        return [self.uid]
+    }
+    public init(from v: [Any]) {
+        self.init(uid: v[0] as! UInt64)
+    }
+}
+
+extension UserFavoriteFolderQuery: Packable {
+    public static let packFormat = "<QQi"
+    public var packValues: [Any] {
+        return [self.uid, self.fid, Int32(self.pageNumber ?? -1)]
+    }
+    public init(from v: [Any]) {
+        self.init(uid: v[0] as! UInt64, fid: v[1] as! UInt64,
+                  pageNumber: parsePageNumber(v[2]))
+    }
+}
+
+func unpackQuery(type: TaskType, bytes: [UInt8]) -> Any {
+    switch type {
+    case .search:
+        return SearchQuery.unpack(from: bytes)
+    case .tag_detail:
+        return TagDetailQuery.unpack(from: bytes)
+    case .tag_top:
+        return TagTopQuery.unpack(from: bytes)
+    case .video_relatedVideos:
+        return VideoRelatedVideosQuery.unpack(from: bytes)
+    case .video_tags:
+        return VideoTagsQuery.unpack(from: bytes)
+    case .user_submissions:
+        return UserSubmissionsQuery.unpack(from: bytes)
+    case .user_favoriteFolderList:
+        return UserFavoriteFolderListQuery.unpack(from: bytes)
+    case .folder_favoriteFolder:
+        return UserFavoriteFolderQuery.unpack(from: bytes)
+    }
+}

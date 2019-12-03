@@ -1,0 +1,259 @@
+import Foundation
+import SQLite
+import JQWrapper
+import BilibiliAPI
+import SwiftyJSON
+
+func parseMetadata(from str: String?) throws -> JSON? {
+    guard let str = str else {
+        return nil
+    }
+    return try JSON(data: str.data(using: .utf8)!)
+}
+
+func mergeMetadata(for type: TaskType, old: JSON?, new: JSON?) -> JSON? {
+    guard let old = old else { return new }
+    guard let new = new else { return old }
+    switch type {
+    case .search: return new
+    case .tag_detail: return new
+    case .tag_top: return new
+    case .video_relatedVideos: return new
+    case .video_tags: return new
+    case .user_submissions: return new
+    case .user_favoriteFolderList: return new
+    case .folder_favoriteFolder: return new
+    }
+}
+
+let jqSortKeysAndCompact = try! JQ(query: ".", usesLock: true, options: [.sortKeys])
+
+enum TaskStatus: Int {
+    case pending    = 0
+    case processing = 1
+    case done       = 2
+    case frozen     = 3
+}
+
+public struct EnqueuedTask {
+    var task: APITask
+    var shouldFreeze: Bool
+    var properity: Int
+    var referrer: TaskQueueDB.Referrer
+    public init(_ task: APITask, shouldFreeze: Bool = false, properity: Int = 0, referrer: TaskQueueDB.Referrer) {
+        self.task = task
+        self.shouldFreeze = shouldFreeze
+        self.properity = properity
+        self.referrer = referrer
+    }
+}
+
+fileprivate let t_queue = Table("queue")
+fileprivate let c_type =        Expression<   Int >("type")
+fileprivate let c_query =       Expression<  Blob >("query")
+fileprivate let c_metadata =    Expression<String?>("metadata")
+fileprivate let c_status =      Expression<   Int >("status")
+fileprivate let c_attempts =    Expression<   Int >("attempts")
+fileprivate let c_priority =    Expression<   Int >("priority")
+fileprivate let c_referrers =   Expression<  Blob >("referrers")
+public class TaskQueueDB {
+    let db: Connection
+
+    public init(path: String) throws {
+        db = try Connection(path)
+        
+        db.busyHandler({ (_) in true })
+
+        try db.run(t_queue.create(ifNotExists: true) { t in
+            t.column(c_type)
+            t.column(c_query)
+            t.column(c_metadata)
+            t.column(c_status)
+            t.column(c_attempts, defaultValue: 0)
+            t.column(c_priority)
+            t.column(c_referrers)
+
+            t.primaryKey(c_type, c_query)
+        })
+        try db.run(
+            t_queue.createIndex(c_status, c_priority.desc, c_attempts.asc,
+                                ifNotExists: true))
+        
+        // for test purpose
+        do {
+            try db.run(t_queue.filter(c_status == TaskStatus.frozen.rawValue)
+                .update(c_status <- TaskStatus.pending.rawValue))
+        }
+        
+        let cleaned = try db.run(t_queue.filter(c_status == TaskStatus.processing.rawValue)
+            .update(c_status <- TaskStatus.pending.rawValue))
+        if cleaned != 0 {
+            logger.log(.warning, msg: "\(cleaned) tasks have not finished on last run",
+                       functionName: #function, lineNum: #line, fileName: #file)
+        }
+    }
+    
+    public enum Referrer {
+        case taskID(Int64)
+        case root
+        case ignore // 如: 每个视频都会是其拥有 tag 的 referrer
+    }
+    
+    private func _enqueue(task: APITask, shouldFreeze: Bool = false, properity: Int = 0, referrer: Referrer) throws {
+        struct Record {
+            let type: TaskType
+            let query: Blob
+            let metadata: String?
+            let status: Int
+            let attempts: Int
+            let priority: Int
+            let referrers: Blob
+            init (from row: Row, type: TaskType, query: Blob) {
+                self.type = type
+                self.query = query
+                self.metadata = row[c_metadata]
+                self.status = row[c_status]
+                self.attempts = row[c_attempts]
+                self.priority = row[c_priority]
+                self.referrers = row[c_referrers]
+            }
+            init (from row: Row) {
+                self.init(from: row, type: TaskType(rawValue: row[c_type])!, query: row[c_query])
+            }
+        }
+        
+        let type = TaskType(from: task.label)
+        //            var query = String(data: task.query.json, encoding: .utf8)!
+        //            query = try jqSortKeysAndCompact.executeOne(input: query)
+        let query = Blob(bytes: (task.query as! Packable).pack())
+        var oldRecord: Record?
+        for record in try db.prepare(t_queue.select([c_metadata, c_status, c_attempts, c_priority, c_referrers]).filter(c_type == type.rawValue && c_query == query)) {
+            if oldRecord != nil {
+                fatalError("Duplicated task in queue!")
+            }
+            oldRecord = Record(from: record, type: type, query: query)
+        }
+        let newMetadata = mergeMetadata(
+            for: type,
+            old: try parseMetadata(from: oldRecord?.metadata),
+            new: task.metadata)?.rawString()!
+        let newStatus: TaskStatus!
+        if oldRecord?.status == nil || oldRecord!.status == TaskStatus.frozen.rawValue {
+            newStatus = shouldFreeze ? .frozen : .pending
+        } else {
+            newStatus = TaskStatus(rawValue: oldRecord?.status ?? TaskStatus.pending.rawValue)
+        }
+        var newReferrers = oldRecord?.referrers.bytes ?? []
+        switch referrer {
+        case .taskID(let id):
+            newReferrers += id.bytes
+        case .root:
+            newReferrers += Int64(0).bytes
+        case .ignore:
+            break
+        }
+        
+        let insertStatement =
+            t_queue.insert(or: .replace,
+                           c_type <- type.rawValue,
+                           c_query <- query,
+                           c_metadata <- newMetadata,
+                           c_status <- newStatus.rawValue,
+                           c_priority <- max(oldRecord?.priority ?? Int.min, properity),
+                           c_referrers <- Blob(bytes: newReferrers))
+        try self.db.run(insertStatement)
+    }
+    public func enqueue(_ tasks: EnqueuedTask...) throws {
+        try self.enqueue(tasks)
+    }
+    public func enqueue(_ tasks: [EnqueuedTask]) throws {
+        try self.db.transaction {
+            for task in tasks {
+                try self._enqueue(
+                    task: task.task,
+                    shouldFreeze: task.shouldFreeze,
+                    properity: task.properity,
+                    referrer: task.referrer)
+            }
+        }
+    }
+    
+    public func dequeue() throws -> APITask? {
+        var currentRowID: Int64?
+        var raw_type: Int!
+        var raw_query: Blob!
+        var raw_metadata: String?
+        try self.db.transaction {
+            for record in try db.prepare(
+                t_queue.select(rowid, c_type, c_query, c_metadata)
+                    .filter(c_status == TaskStatus.pending.rawValue
+                        && c_attempts < 3).order(c_priority.desc, c_attempts.asc)
+                    .limit(1)) {
+                        if currentRowID != nil {
+                            fatalError("Duplicated tasks in queue!")
+                        }
+                        currentRowID = record[rowid]
+                        raw_type = record[c_type]
+                        raw_query = record[c_query]
+                        raw_metadata = record[c_metadata]
+            }
+            guard let currentRowID = currentRowID else {
+                return // no pending tasks in queue
+            }
+            try db.run(t_queue.filter(rowid == currentRowID)
+                .update(c_status <- TaskStatus.processing.rawValue))
+        }
+        if currentRowID == nil {
+            return nil // no pending tasks in queue
+        }
+        let type = TaskType(rawValue: raw_type)!
+        let query = unpackQuery(type: type, bytes: raw_query.bytes) as! APIQuery
+        
+        let metadata = raw_metadata == nil ? nil : try JSON(data: raw_metadata!.data(using: .utf8)!)
+        var task = query.buildTask(withMetadata: metadata)
+        task.taskID = currentRowID
+        return task
+    }
+    
+    public func defreeze(_ judger: (TaskType, APIQuery, JSON?) -> Bool) throws {
+        try db.transaction {
+            for record in try db.prepare(
+                t_queue.select(rowid, c_type, c_query, c_metadata)
+                    .filter(c_status == TaskStatus.frozen.rawValue)) {
+                        let currentRowID = record[rowid]
+                        let type = TaskType(rawValue: record[c_type])!
+                        let query = unpackQuery(type: type, bytes: record[c_query].bytes) as! APIQuery
+                        let raw_metadata = record[c_metadata]
+                        let metadata = raw_metadata == nil ? nil : try JSON(data: raw_metadata!.data(using: .utf8)!)
+                        
+                        let judgement = judger(type, query, metadata)
+                        if judgement {
+                            try db.run(t_queue.filter(rowid == currentRowID)
+                                .update(c_status <- TaskStatus.pending.rawValue))
+                        }
+            }
+
+        }
+    }
+    
+    public enum TaskReport {
+        case done
+        case shouldFreeze
+        case failed
+    }
+    public func report(taskID: Int64, _ report: TaskReport) throws {
+        var nextStatus: TaskStatus!
+        switch report {
+        case .done: nextStatus = .done
+        case .shouldFreeze: nextStatus = .frozen
+        case .failed: nextStatus = .pending
+        }
+        let updatedCount = try db.run(t_queue.filter(rowid == taskID)
+            .update(c_status <- nextStatus.rawValue, c_attempts <- c_attempts + 1))
+        if updatedCount > 1 {
+            fatalError("Bad report! updated rows: \(updatedCount).")
+        }
+    }
+
+    // enqueue, dequeue, report
+}

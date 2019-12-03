@@ -1,0 +1,137 @@
+import Foundation
+
+// not meant to be compatible with python's "struct" module
+
+fileprivate let isLittleEndian = UInt16(1).littleEndian == 1
+
+public protocol Packable {
+    static var packFormat: String { get }
+    var packValues: [Any] { get }
+    init(from unpackedValues: [Any])
+}
+
+internal extension Data {
+    var bytes: [UInt8] {
+        return [UInt8](self)
+    }
+}
+
+internal extension BinaryInteger {
+    var data: Data {
+        var _self = self
+        return Data(bytes: &_self, count: MemoryLayout.size(ofValue: self))
+    }
+    var bytes: [UInt8] {
+        return self.data.bytes
+    }
+    init(data: Data) {
+        self = data.withUnsafeBytes { $0.load(as: Self.self) }
+    }
+    init(bytes: [UInt8]) {
+        self.init(data: Data(bytes))
+    }
+}
+
+extension Packable {
+    func pack() -> [UInt8] {
+        var format = Array(Self.packFormat)
+        var values = self.packValues
+        
+        if !isLittleEndian {
+            fatalError("Unsupported endian!")
+        }
+        let endian = format.removeFirst()
+        if endian != "<" {
+            fatalError("Unsupported endian format: \(endian).")
+        }
+    
+        var packed = [UInt8]()
+        while true {
+            if format.count == 0 { break }
+            let f = format.removeFirst()
+            
+            var new: [UInt8]?
+            let v = values.removeFirst()
+            switch f { // biQs
+            case "b":
+                new = (v as! Int8).bytes
+            case "B":
+                new = (v as! UInt8).bytes
+            case "i":
+                new = (v as! Int32).bytes
+            case "q":
+                new = (v as! Int64).bytes
+            case "Q":
+                new = (v as! UInt64).bytes
+            case "≈":
+                let sf =  format.removeFirst()
+                if sf != "s" {
+                    fatalError("Unsupported format: \(sf).")
+                }
+                let v: [UInt8] = Array((v as! String).utf8)
+                new = Int32(v.count).bytes + v
+            default:
+                fatalError("Unsupported format: \(f).")
+            }
+            if let new = new { packed += new }
+        }
+        if values.count != 0 {
+            fatalError("Count of values not match!")
+        }
+        return packed
+    }
+    
+    static func unpack(from bytes: [UInt8]) -> Self {
+        var format = Array(Self.packFormat)
+        var bytes = bytes
+        var p = 0
+        
+        if !isLittleEndian {
+            fatalError("Unsupported endian!")
+        }
+        let endian = format.removeFirst()
+        if endian != "<" {
+            fatalError("Unsupported endian format: \(endian).")
+        }
+        
+        var unpacked = [Any]()
+        while true {
+            if format.count == 0 { break }
+            let f = format.removeFirst()
+            
+            switch f {
+            case "b":
+                unpacked.append(Int8(bytes: Array(bytes[p..<p+1])))
+                p += 1
+            case "B":
+                unpacked.append(UInt8(bytes: Array(bytes[p..<p+1])))
+                p += 1
+            case "i":
+                unpacked.append(Int32(bytes: Array(bytes[p..<p+4])))
+                p += 4
+            case "q":
+                unpacked.append(Int64(bytes: Array(bytes[p..<p+8])))
+                p += 8
+            case "Q":
+                unpacked.append(UInt64(bytes: Array(bytes[p..<p+8])))
+                p += 8
+            case "≈":
+                let sf =  format.removeFirst()
+                if sf != "s" {
+                    fatalError("Unsupported format: \(sf).")
+                }
+                let count = Int(Int32(bytes: Array(bytes[p..<p+4])))
+                p += 4
+                unpacked.append(String(bytes: Array(bytes[p..<p+count]), encoding: .utf8)!)
+                p += count
+            default:
+                fatalError("Unsupported format: \(f).")
+            }
+        }
+        if bytes.count != p {
+            fatalError("Count of bytes not match!")
+        }
+        return Self(from: unpacked)
+    }
+}
+
