@@ -51,9 +51,10 @@ scheduler.errorHandler = { label, query, taskID, metadata, error in
             report = .doneOnLastPage
         }
     } else {
-        logger.log(.warning, msg: "Caught unexpected error on processing task. "
+        logger.log(.error, msg: "Caught unexpected error on processing task. "
             + errorContent,
             functionName: #function, lineNum: #line, fileName: #file)
+        fatalError()
     }
     return report
 }
