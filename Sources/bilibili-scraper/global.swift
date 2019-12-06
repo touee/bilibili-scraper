@@ -10,7 +10,7 @@ import BilibiliAPI
 import BilibiliEntityDB
 
 let workdir = try! { () throws -> String in
-    let workdir = (env("BILIBILI_SCRAPER__WORKDIR") ?? "workdir") + "/"
+    let workdir = (configuration.workdir ?? "workdir") + "/"
     try mkdirAll(workdir)
     return workdir
     }()
@@ -59,19 +59,25 @@ let rawDataLogger
                     currentLineNumber: startLineNumber,
                     paginationSize: PAGINATION_SIZE)
 
-let browserUserAgent = ProcessInfo.processInfo.environment["BILIBILI_SCRAPER__BROWSER_USER_AGENT"]!
-let mobileApp = ProcessInfo.processInfo.environment["BILIBILI_SCRAPER__MOBILE_7260_MOBI_APP"]!
-let mobilePlatform = ProcessInfo.processInfo.environment["BILIBILI_SCRAPER__MOBILE_7260_PLATFORM"]!
-let mobileUserAgent = ProcessInfo.processInfo.environment["BILIBILI_SCRAPER__MOBILE_7260_USER_AGENT"]!
+let browserUserAgent = configuration.environment.browser.userAgent
+let mobileApp = configuration.environment.mobile7260.mobiApp
+let mobilePlatform = configuration.environment.mobile7260.platform
+let mobileUserAgent = configuration.environment.mobile7260.userAgent
 
 let apiProvider = { () -> APIProvider in
-    let apiProvider = APIProvider(fallbackKeys: nil)
-    try! apiProvider.addClientInfo(for: .browser, ClientInfo.forBrowser(userAgent: browserUserAgent, keys: nil))
+    let apiProvider = APIProvider(fallbackKeys: { () -> APIKeys? in
+        if let keys = configuration.environment.keys {
+            return APIKeys(appKey: keys.appKey, secretKey: keys.secretKey)
+        }
+        return nil
+    }())
+    try! apiProvider.addClientInfo(for: .browser,
+                                   ClientInfo.forBrowser(userAgent: browserUserAgent, keys: nil))
     try! apiProvider.addClientInfo(for: .iphone7260,
-                              ClientInfo(build: 7260, device: "phone",
-                                         mobiApp: mobileApp, platform: mobilePlatform,
-                                         userAgent: mobileUserAgent,
-                                         keys: nil))
+                                   ClientInfo(build: 7260, device: "phone",
+                                              mobiApp: mobileApp, platform: mobilePlatform,
+                                              userAgent: mobileUserAgent,
+                                              keys: nil))
     return apiProvider
 }()
 

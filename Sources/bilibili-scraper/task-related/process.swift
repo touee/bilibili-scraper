@@ -202,7 +202,7 @@ let taskProcessorGroup = TaskProcessorGroup(
             var subregion = SubregionEntity(subregion_id: nil, name: video.subregion_name)
             entityDB.updateSubregion(subregion: &subregion)
             videos.append(VideoEntity(aid: video.aid, title: video.title, uploader_uid: query.uid, ownership: nil, description: nil,
-                                      publish_time: video.c_time, c_time: nil, // UserSubmissions 中的 c_time 是 publish_time!
+                                      publish_time: video.publish_time, c_time: nil, // UserSubmissions 中的 c_time 是 publish_time!
                                       subregion_reference_id: subregion.subregion_reference_id, parts: nil, cover_url: video.cover_url, duration: video.duration, cid: nil, state: nil, stats: nil, volatile: video.other_interesting_stuff))
         }
         

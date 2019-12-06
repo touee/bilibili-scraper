@@ -11,12 +11,21 @@
         }
       },
       {
+        "package": "async-kit",
+        "repositoryURL": "https://github.com/vapor/async-kit.git",
+        "state": {
+          "branch": "master",
+          "revision": "199a53542275466d691767b63a80ed8e97f52e40",
+          "version": null
+        }
+      },
+      {
         "package": "BilibiliAPI",
         "repositoryURL": "https://github.com/touee/BilibiliAPI.git",
         "state": {
           "branch": null,
-          "revision": "c7e6be05706a1935c7e3bc1299fbbffead31d3a6",
-          "version": "0.1.3"
+          "revision": "a74968d9d05a4fd93e53edf29ad2349677f15c42",
+          "version": "0.1.4"
         }
       },
       {
@@ -47,6 +56,42 @@
         }
       },
       {
+        "package": "NetTime",
+        "repositoryURL": "https://github.com/dduan/NetTime",
+        "state": {
+          "branch": null,
+          "revision": "cc71922e621731b59b2b909eac7d6748c4a5a752",
+          "version": "0.2.2"
+        }
+      },
+      {
+        "package": "postgres-kit",
+        "repositoryURL": "https://github.com/vapor/postgres-kit",
+        "state": {
+          "branch": "master",
+          "revision": "6e4030ba7197d5fc9b44371a3698b2c68d7128f8",
+          "version": null
+        }
+      },
+      {
+        "package": "postgres-nio",
+        "repositoryURL": "https://github.com/vapor/postgres-nio.git",
+        "state": {
+          "branch": "master",
+          "revision": "e0ed3fb5f42d63d7f39bf27e082100817d8ace22",
+          "version": null
+        }
+      },
+      {
+        "package": "sql-kit",
+        "repositoryURL": "https://github.com/vapor/sql-kit.git",
+        "state": {
+          "branch": "master",
+          "revision": "35d0071854caff813b5479c445a21113fd882773",
+          "version": null
+        }
+      },
+      {
         "package": "SQLite.swift",
         "repositoryURL": "https://github.com/stephencelis/SQLite.swift.git",
         "state": {
@@ -70,6 +115,15 @@
         "state": {
           "branch": null,
           "revision": "74d7b91ceebc85daf387ebb206003f78813f71aa",
+          "version": "1.2.0"
+        }
+      },
+      {
+        "package": "swift-metrics",
+        "repositoryURL": "https://github.com/apple/swift-metrics.git",
+        "state": {
+          "branch": null,
+          "revision": "3fefedaaef285830cc98ae80231140122076a7e0",
           "version": "1.2.0"
         }
       },
@@ -116,6 +170,24 @@
           "branch": null,
           "revision": "2b6054efa051565954e1d2b9da831680026cd768",
           "version": "5.0.0"
+        }
+      },
+      {
+        "package": "TOMLDecoder",
+        "repositoryURL": "https://github.com/dduan/TOMLDecoder.git",
+        "state": {
+          "branch": null,
+          "revision": "e591bee4e5d624b99519d563ba87cc762ab7a308",
+          "version": "0.1.5"
+        }
+      },
+      {
+        "package": "TOMLDeserializer",
+        "repositoryURL": "https://github.com/dduan/TOMLDeserializer",
+        "state": {
+          "branch": null,
+          "revision": "ea6b941e53cdedc9f4737903769eb9f2cf8d2acf",
+          "version": "0.2.4"
         }
       }
     ]

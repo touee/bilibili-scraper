@@ -23,19 +23,21 @@ let package = Package(
         .package(url: "https://github.com/touee/SwiftTask.git", from: "0.0.12"),
         
         .package(url: "https://github.com/stephencelis/SQLite.swift.git", from: "0.12.0"),
-        .package(url: "https://github.com/IBM-Swift/HeliumLogger.git", .upToNextMinor(from: "1.9.0")),
-        .package(url: "https://github.com/SwiftyJSON/SwiftyJSON.git", .upToNextMinor(from: "5.0.0")),
+        .package(url: "https://github.com/IBM-Swift/HeliumLogger.git", from: "1.9.0"),
+        .package(url: "https://github.com/SwiftyJSON/SwiftyJSON.git", from: "5.0.0"),
+        .package(url: "https://github.com/dduan/TOMLDecoder.git", from: "0.1.5"),
+        //.package(url: "https://github.com/vapor/postgres-kit", .branch("master")),
         
-        .package(url: "https://github.com/touee/BilibiliAPI.git", .upToNextMinor(from: "0.1.3")),
+        .package(url: "https://github.com/touee/BilibiliAPI.git", from: "0.1.4"),
     ],
     targets: [
         // Targets are the basic building blocks of a package. A target can define a module or a test suite.
         // Targets can depend on other targets in this package, and on products in packages which this package depends on.
         .target(
             name: "BilibiliEntityDB",
-            dependencies: ["SQLite"]),
+            dependencies: ["SQLite"/*, "PostgresKit"*/]),
         .target(
             name: "bilibili-scraper",
-            dependencies: ["BilibiliAPI", "BilibiliEntityDB", "SwiftTask", "AsyncHTTPClient", "SQLite", "SwiftyJSON", "HeliumLogger"]),
+            dependencies: ["BilibiliAPI", "BilibiliEntityDB", "SwiftTask", "AsyncHTTPClient", "SQLite", "SwiftyJSON", "HeliumLogger", "TOMLDecoder"]),
     ]
 )

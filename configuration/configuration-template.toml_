@@ -1,0 +1,20 @@
+workdir = "workdir"
+
+[environment]
+    [environment.keys]
+        appKey = 
+        secretKey = 
+    [environment.browser]
+        user-agent = 
+    [environment.mobile7260]
+        mobiApp = 
+        platform = 
+        user-agent = 
+
+[entity-db]
+    [entity-db.connection]
+        host = "127.0.0.1"
+        port = 5432
+        username = "postgre"
+        password = 
+        database = "BilibiliScraping"

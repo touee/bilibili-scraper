@@ -144,7 +144,7 @@ func checkCTime() {
             if type == .user_submissions {
                 let videos = (result! as! UserSubmissionsResult.Result).submissions
                 for video in videos {
-                    localArray[i].append((aid: video.aid, c_time: nil, c_time_in_user_submission:  video.c_time))
+                    localArray[i].append((aid: video.aid, c_time: nil, c_time_in_user_submission: video.publish_time))
                 }
             } else {
                 let videos = extractGeneralizeVideoItems(type: type, result: result!)

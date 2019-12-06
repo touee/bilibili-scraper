@@ -10,7 +10,6 @@ temp/
 /workdir/
 /workdir-backup.zip
 /other-stuff/
-/Configurations/*
 
 /env.sh
 
