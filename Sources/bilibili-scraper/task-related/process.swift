@@ -56,20 +56,15 @@ func removeDuplicatedFounds(_ newFounds: inout NewFounds) {
     }
 }
 
-func collect(videos: [VideoEntity]?, users: [UserEntity]?,
-             tags: [TagEntity]?, folders: [FolderEntity]?,
+func collect(users: [UserEntity]?, tags: [TagEntity]?,
+             videos: [VideoEntity]?, folders: [FolderEntity]?,
+             subregions: [SubregionEntity]?,
              folderItmes: (uid: UInt64, fid: UInt64, items: [FolderVideo])?,
              videosTags: [(aid: UInt64, tags: [VideoTag])]?,
              userCurrentVisibleVideoCount: (UInt64, Int)?,
              taskID: Int64, query: APIQuery, metadata: JSON?,
              report: TaskReport) -> TaskReport {
-    var videos = videos
-    var users = users
-    var tags = tags
-    var folders = folders
-    var folderItmes = folderItmes
-    entityDB.update(videos: &videos, users: &users, tags: &tags, folders: &folders, folderItmes: &folderItmes,
-                    videosTags: videosTags, userCurrentVisibleVideoCount: userCurrentVisibleVideoCount)
+    entityDB.update(users: users, tags: tags, subregions: subregions, videos: videos, folders: folders, folderItmes: folderItmes, videosTags: videosTags, userCurrentVisibleVideoCount: userCurrentVisibleVideoCount)
     
     var newFounds = NewFounds(
         videos: concatOptionalArrays(
@@ -133,7 +128,7 @@ struct TaskProcessorGroup {
     let processVideoTags:
     TaskResultProcessor<VideoTagsResult>
     let processUserSubmissions:
-    TaskResultProcessor<UserSubmissionsResult>
+    TaskResultProcessor<UserSubmissionSearchResult>
     let processUserFavoriteFolderList:
     TaskResultProcessor<UserFavoriteFolderListResult>
     let processTagDetail:
@@ -163,19 +158,23 @@ let taskProcessorGroup = TaskProcessorGroup(
     processVideoRelatedVideos: { (_, result, query, taskID, metadata) in
         var videos = [VideoEntity]()
         var users = [UserEntity]()
+        var subregions = [SubregionEntity]()
         
         for video in result {
             // 记录视频信息
-            var subregion = SubregionEntity(subregion_id: video.subregion_id, name: video.subregion_name)
-            entityDB.updateSubregion(subregion: &subregion)
-            videos.append(VideoEntity(aid: video.aid, title: video.title, uploader_uid: video.uploader_uid, ownership: video.ownership, description: video.description, publish_time: video.times.pub, c_time: video.times.c, subregion_reference_id: subregion.subregion_reference_id, parts: video.parts, cover_url: video.cover_url, duration: video.duration, cid: video.cid, state: video.state, stats: video.stats.entityStats, volatile: video.other_interesting_stuff))
+            subregions.append(SubregionEntity(subregion_id: video.subregion_id, name: video.subregion_name))
+            videos.append(VideoEntity(aid: video.aid, title: video.title, uploader_uid: video.uploader_uid, ownership: video.ownership, description: video.description, publish_time: video.times.pub, c_time: video.times.c, subregion_id: video.subregion_id, parts: video.parts, cover_url: video.cover_url, duration: video.duration, cid: video.cid, state: video.state, stats: video.stats.entityStats, volatile: video.other_interesting_stuff))
             // 记录 up 主信息
             users.append(UserEntity(uid: video.uploader_uid, name: video.uploader_name, avatar_url: video.uploader_profile_image_url))
         }
         
-        return collect(videos: videos, users: users, tags: nil, folders: nil, folderItmes: nil,
-                       videosTags: nil, userCurrentVisibleVideoCount: nil,
-                taskID: taskID, query: query, metadata: metadata, report: .done)
+        return collect(users: users, tags: nil,
+                       videos: videos, folders: nil,
+                       subregions: subregions,
+                       folderItmes: nil, videosTags: nil,
+                       userCurrentVisibleVideoCount: nil,
+                       taskID: taskID, query: query,
+                       metadata: metadata, report: .done)
 },
     // 视频拥有的标签
     processVideoTags: { (_, result, query, taskID, metadata) in
@@ -189,28 +188,36 @@ let taskProcessorGroup = TaskProcessorGroup(
             tags.append(TagEntity(tid: tag.tid, name: tag.name, type: tag.type, cover_url: tag.cover_url, head_cover_url: tag.head_cover_url, description: tag.description, short_description: tag.short_description, c_time: tag.c_time, volatile: tag.other_interesting_stuff))
         }
         
-        return collect(videos: nil, users: nil, tags: tags, folders: nil, folderItmes: nil,
-                videosTags: [videoTags], userCurrentVisibleVideoCount: nil,
-                taskID: taskID, query: query, metadata: metadata, report: .done)
+        return collect(users: nil, tags: tags,
+                       videos: nil, folders: nil,
+                       subregions: nil,
+                       folderItmes: nil, videosTags: [videoTags],
+                       userCurrentVisibleVideoCount: nil,
+                       taskID: taskID, query: query,
+                       metadata: metadata, report: .done)
 },
     // 用户投稿
-    processUserSubmissions: { (_, result, query, taskID, metadata) in
+    processUserSubmissions: { (_, result, query, taskID, metadata) in // TODO: 换成了 UserSubmissionSearchResult
         var videos = [VideoEntity]()
-        
+        var subregions = [SubregionEntity]()
+//        let table = result.subregion_id_name_table ?? [:]
         for video in result.submissions {
             // 记录视频信息
-            var subregion = SubregionEntity(subregion_id: nil, name: video.subregion_name)
-            entityDB.updateSubregion(subregion: &subregion)
-            videos.append(VideoEntity(aid: video.aid, title: video.title, uploader_uid: query.uid, ownership: nil, description: nil,
-                                      publish_time: video.publish_time, c_time: nil, // UserSubmissions 中的 c_time 是 publish_time!
-                                      subregion_reference_id: subregion.subregion_reference_id, parts: nil, cover_url: video.cover_url, duration: video.duration, cid: nil, state: nil, stats: nil, volatile: video.other_interesting_stuff))
+            subregions.append(SubregionEntity(subregion_id: video.subregion_id, name: nil))
+            videos.append(VideoEntity(aid: video.aid, title: video.title, uploader_uid: query.uid, ownership: nil, description: video.description,
+                                      publish_time: video.publish_time, c_time: nil, // UserSubmissions 及 UserSubmissionSearch 中的 c_time 是 publish_time!
+                                      subregion_id: video.subregion_id, parts: nil, cover_url: video.cover_url, duration: video.duration, cid: nil, state: nil, stats: nil, volatile: video.other_interesting_stuff))
         }
         
-        return collect(videos: videos, users: nil, tags: nil, folders: nil, folderItmes: nil,
-                       videosTags: nil, userCurrentVisibleVideoCount: (query.uid, result.total_count),
-                taskID: taskID, query: query, metadata: metadata,
-                report: (result.submissions.count == 0
-                    || (query.pageNumber ?? 1)+1 > ((result.total_count-1)/20)+1) ? .done : .shouldTurnPage)
+        return collect(users: nil, tags: nil,
+                       videos: videos, folders: nil,
+                       subregions: subregions,
+                       folderItmes: nil, videosTags: nil,
+                       userCurrentVisibleVideoCount: (query.uid, result.total_count),
+                       taskID: taskID, query: query,
+                       metadata: metadata,
+                       report: (result.submissions.count == 0
+                    || (query.pageNumber ?? 1)+1 > ((result.total_count-1)/100)+1) ? .done : .shouldTurnPage)
 },
     // 用户收藏夹列表
     processUserFavoriteFolderList: { (_, result, query, taskID, metadata) in
@@ -224,9 +231,13 @@ let taskProcessorGroup = TaskProcessorGroup(
                                         volatile: folder.other_interesting_stuff))
         }
         
-        return collect(videos: nil, users: nil, tags: nil, folders: folders, folderItmes: nil,
-                       videosTags: nil, userCurrentVisibleVideoCount: nil,
-                taskID: taskID, query: query, metadata: metadata, report: .done)
+        return collect(users: nil, tags: nil,
+                       videos: nil, folders: folders,
+                       subregions: nil,
+                       folderItmes: nil, videosTags: nil,
+                       userCurrentVisibleVideoCount: nil,
+                       taskID: taskID, query: query,
+                       metadata: metadata, report: .done)
 },
     // 标签页
     processTagDetail: { (_, result, query, taskID, metadata) in
@@ -234,6 +245,7 @@ let taskProcessorGroup = TaskProcessorGroup(
         var users = [UserEntity]()
         var tags = [TagEntity]()
         var videosTags = [(UInt64, [VideoTag])]()
+        var subregions = [SubregionEntity]()
         
         // 记录 tag 信息
         let info = result.info
@@ -242,9 +254,8 @@ let taskProcessorGroup = TaskProcessorGroup(
         // 展示的视频
         for video in result.videos {
             // 记录视频信息
-            var subregion = SubregionEntity(subregion_id: video.subregion_id, name: video.subregion_name)
-            entityDB.updateSubregion(subregion: &subregion)
-            videos.append(VideoEntity(aid: video.aid, title: video.title, uploader_uid: video.uploader_uid, ownership: video.ownership, description: video.description, publish_time: video.times.pub, c_time: video.times.c, subregion_reference_id: subregion.subregion_reference_id, parts: video.parts, cover_url: video.cover_url, duration: video.duration, cid: video.cid, state: video.state, stats: video.stats.entityStats, volatile: video.other_interesting_stuff))
+            subregions.append(SubregionEntity(subregion_id: video.subregion_id, name: video.subregion_name))
+            videos.append(VideoEntity(aid: video.aid, title: video.title, uploader_uid: video.uploader_uid, ownership: video.ownership, description: video.description, publish_time: video.times.pub, c_time: video.times.c, subregion_id: video.subregion_id, parts: video.parts, cover_url: video.cover_url, duration: video.duration, cid: video.cid, state: video.state, stats: video.stats.entityStats, volatile: video.other_interesting_stuff))
             // 记录 up 主信息
             users.append(UserEntity(uid: video.uploader_uid, name: video.uploader_name, avatar_url: video.uploader_profile_image_url))
             // 记录视频标签信息
@@ -257,9 +268,13 @@ let taskProcessorGroup = TaskProcessorGroup(
             tags.append(TagEntity(tid: tag.tid, name: tag.name, type: nil, cover_url: nil, head_cover_url: nil, description: nil, short_description: nil, c_time: nil, volatile: nil))
         }
         
-        return collect(videos: videos, users: users, tags: tags, folders: nil, folderItmes: nil,
-                       videosTags: videosTags, userCurrentVisibleVideoCount: nil,
-                       taskID: taskID, query: query, metadata: metadata,
+        return collect(users: users, tags: tags,
+                       videos: videos, folders: nil,
+                       subregions: subregions,
+                       folderItmes: nil, videosTags: videosTags,
+                       userCurrentVisibleVideoCount: nil,
+                       taskID: taskID, query: query,
+                       metadata: metadata,
                        report: result.videos.count == 0 ? .done : .shouldTurnPage)
 },
     // 标签页中的默认排序
@@ -267,44 +282,52 @@ let taskProcessorGroup = TaskProcessorGroup(
         var videos = [VideoEntity]()
         var users = [UserEntity]()
         var videosTags = [(UInt64, [VideoTag])]()
+        var subregions = [SubregionEntity]()
         
         // 展示的视频
         for video in result {
             // 记录视频信息
-            var subregion = SubregionEntity(subregion_id: video.subregion_id, name: video.subregion_name)
-            entityDB.updateSubregion(subregion: &subregion)
-            videos.append(VideoEntity(aid: video.aid, title: video.title, uploader_uid: video.uploader_uid, ownership: video.ownership, description: video.description, publish_time: video.times.pub, c_time: video.times.c, subregion_reference_id: subregion.subregion_reference_id, parts: video.parts, cover_url: video.cover_url, duration: video.duration, cid: video.cid, state: video.state, stats: video.stats.entityStats, volatile: video.other_interesting_stuff))
+            subregions.append(SubregionEntity(subregion_id: video.subregion_id, name: video.subregion_name))
+            videos.append(VideoEntity(aid: video.aid, title: video.title, uploader_uid: video.uploader_uid, ownership: video.ownership, description: video.description, publish_time: video.times.pub, c_time: video.times.c, subregion_id: video.subregion_id, parts: video.parts, cover_url: video.cover_url, duration: video.duration, cid: video.cid, state: video.state, stats: video.stats.entityStats, volatile: video.other_interesting_stuff))
             // 记录 up 主信息
             users.append(UserEntity(uid: video.uploader_uid, name: video.uploader_name, avatar_url: video.uploader_profile_image_url))
             // 记录视频标签信息
             videosTags.append((video.aid, [VideoTag(tid: query.tid, info: nil)]))
         }
         
-        return collect(videos: videos, users: users, tags: nil, folders: nil, folderItmes: nil,
-                       videosTags: videosTags, userCurrentVisibleVideoCount: nil,
-                       taskID: taskID, query: query, metadata: metadata,
+        return collect(users: users, tags: nil,
+                       videos: videos, folders: nil,
+                       subregions: subregions,
+                       folderItmes: nil, videosTags: videosTags,
+                       userCurrentVisibleVideoCount: nil,
+                       taskID: taskID, query: query,
+                       metadata: metadata,
                        report: (result.count == 0 || query.pageNumber == 2) ? .done : .shouldTurnPage)
 },
     processUserFavoriteFolder: { (_, result, query, taskID, metadata) in
         var videos = [VideoEntity]()
         var users = [UserEntity]()
         var folderItems = [FolderVideo]()
+        var subregions = [SubregionEntity]()
         
         for video in result.archives {
             // 记录视频信息
-            var subregion = SubregionEntity(subregion_id: video.subregion_id, name: video.subregion_name)
-            entityDB.updateSubregion(subregion: &subregion)
-            videos.append(VideoEntity(aid: video.aid, title: video.title, uploader_uid: video.uploader_uid, ownership: video.ownership, description: video.description, publish_time: video.times.pub, c_time: video.times.c, subregion_reference_id: subregion.subregion_reference_id, parts: video.parts, cover_url: video.cover_url, duration: video.duration, cid: video.cid, state: video.state, stats: video.stats.entityStats, volatile: video.other_interesting_stuff))
+            subregions.append(SubregionEntity(subregion_id: video.subregion_id, name: video.subregion_name))
+            videos.append(VideoEntity(aid: video.aid, title: video.title, uploader_uid: video.uploader_uid, ownership: video.ownership, description: video.description, publish_time: video.times.pub, c_time: video.times.c, subregion_id: video.subregion_id, parts: video.parts, cover_url: video.cover_url, duration: video.duration, cid: video.cid, state: video.state, stats: video.stats.entityStats, volatile: video.other_interesting_stuff))
             // 记录 up 主信息
             users.append(UserEntity(uid: video.uploader_uid, name: video.uploader_name, avatar_url: video.uploader_profile_image_url))
             // 记录收藏信息
             folderItems.append(FolderVideo(aid: video.aid, favorite_time: video.favorite_time))
         }
         
-        return collect(videos: videos, users: users, tags: nil, folders: nil,
-                folderItmes: (uid: query.uid, fid: query.fid, items: folderItems),
-                videosTags: nil, userCurrentVisibleVideoCount: nil,
-                taskID: taskID, query: query, metadata: metadata,
-                report: result.archives.count == 0 ? .done : .shouldTurnPage)
+        return collect(users: users, tags: nil,
+                       videos: videos, folders: nil,
+                       subregions: subregions,
+                       folderItmes: (uid: query.uid, fid: query.fid, items: folderItems),
+                       videosTags: nil,
+                       userCurrentVisibleVideoCount: nil,
+                       taskID: taskID, query: query,
+                       metadata: metadata,
+                       report: result.archives.count == 0 ? .done : .shouldTurnPage)
 }
 )

@@ -16,37 +16,36 @@ final public class EntityDB {
         self.connection.busyHandler({ (_) in true })
     }
     
-    public func update(videos: inout [VideoEntity]?, users: inout [UserEntity]?,
-                       tags: inout [TagEntity]?, folders: inout [FolderEntity]?,
-                       folderItmes: inout (uid: UInt64, fid: UInt64, items: [FolderVideo])?,
+    public func update(users: inout [UserEntity]?, tags: inout [TagEntity]?,
+                       subregions: inout [SubregionEntity]?,
+                       videos: inout [VideoEntity]?, folders: inout [FolderEntity]?,
+                       folderItmes: (uid: UInt64, fid: UInt64, items: [FolderVideo])?,
                        videosTags: [(aid: UInt64, tags: [VideoTag])]?,
                        userCurrentVisibleVideoCount: (UInt64, Int)?) {
         try! connection.transaction {
-            if var videos = videos {
-                for i in 0..<videos.count {
-                    self.videoTable.update(video: &videos[i])
-                }
-            }
             if var users = users {
                 for i in 0..<users.count {
                     self.userTable.update(user: &users[i])
                 }
+            }
+            if let countInfo = userCurrentVisibleVideoCount {
+                self.userTable.updateCurrentVisibleVideoCount(uid: countInfo.0,
+                                                              count: countInfo.1)
             }
             if var tags = tags {
                 for i in 0..<tags.count {
                     self.tagTable.update(tag: &tags[i])
                 }
             }
-            if var folders = folders {
-                for i in 0..<folders.count {
-                    self.folderTable.update(folder: &folders[i])
-                    self.userTable.updateHidesFolders(uid: folders[i].owner_uid, value: false)
+            if var subregions = subregions {
+                for i in 0..<subregions.count {
+                    self.subregionTable.update(subregion: &subregions[i])
                 }
             }
-            if let folderItmes = folderItmes {
-                self.folderTable.insertFolderVideoItems(
-                    uid: folderItmes.uid, fid: folderItmes.fid,
-                    items: folderItmes.items)
+            if var videos = videos {
+                for i in 0..<videos.count {
+                    self.videoTable.update(video: &videos[i])
+                }
             }
             if let videosTags = videosTags {
                 for videoTags in videosTags {
@@ -63,17 +62,33 @@ final public class EntityDB {
                     }
                 }
             }
-            if let countInfo = userCurrentVisibleVideoCount {
-                self.userTable.updateCurrentVisibleVideoCount(uid: countInfo.0,
-                                                              count: countInfo.1)
+            if var folders = folders {
+                for i in 0..<folders.count {
+                    self.folderTable.update(folder: &folders[i])
+                    self.userTable.updateHidesFolders(uid: folders[i].owner_uid, value: false)
+                }
+            }
+            if let folderItmes = folderItmes {
+                self.folderTable.insertFolderVideoItems(
+                    uid: folderItmes.uid, fid: folderItmes.fid,
+                    items: folderItmes.items)
             }
         }
     }
     
-    public func updateSubregion(subregion: inout SubregionEntity) {
-        try! self.connection.transaction {
-            self.subregionTable.update(subregion: &subregion)
-        }
+    // update but don't care about updated result
+    public func update(users: [UserEntity]?, tags: [TagEntity]?,
+    subregions: [SubregionEntity]?,
+    videos: [VideoEntity]?, folders: [FolderEntity]?,
+    folderItmes: (uid: UInt64, fid: UInt64, items: [FolderVideo])?,
+    videosTags: [(aid: UInt64, tags: [VideoTag])]?,
+    userCurrentVisibleVideoCount: (UInt64, Int)?) {
+        var users = users
+        var tags = tags
+        var subregions = subregions
+        var videos = videos
+        var folders = folders
+        self.update(users: &users, tags: &tags, subregions: &subregions, videos: &videos, folders: &folders, folderItmes: folderItmes, videosTags: videosTags, userCurrentVisibleVideoCount: userCurrentVisibleVideoCount)
     }
     
     public func updateUserHidesFolders(uid: UInt64, value: Bool) {
@@ -81,5 +96,4 @@ final public class EntityDB {
             self.userTable.updateHidesFolders(uid: uid, value: value)
         }
     }
-    
 }

@@ -52,7 +52,8 @@ public enum TaskType: Int {
             self = .video_relatedVideos
         case is VideoTagsQuery.Type:
             self = .video_tags
-        case is UserSubmissionsQuery.Type:
+        case is UserSubmissionsQuery.Type,
+             is UserSubmissionSearchQuery.Type:
             self = .user_submissions
         case is UserFavoriteFolderListQuery.Type:
             self = .user_favoriteFolderList
@@ -69,21 +70,21 @@ public enum TaskType: Int {
     func extractResult(response: Response) throws -> APIResult {
         switch self {
         case .search:
-            return try SearchResult.extract(from: response)
+            return try! SearchResult.extract(from: response)
         case .video_relatedVideos:
-            return try VideoRelatedVideosResult.extract(from: response)
+            return try! VideoRelatedVideosResult.extract(from: response)
         case .video_tags:
-            return try VideoTagsResult.extract(from: response)
+            return try! VideoTagsResult.extract(from: response)
         case .user_submissions:
-            return try UserSubmissionsResult.extract(from: response)
+            return try! UserSubmissionSearchResult.extract(from: response)
         case .user_favoriteFolderList:
-            return try UserFavoriteFolderListResult.extract(from: response)
+            return try! UserFavoriteFolderListResult.extract(from: response)
         case .tag_detail:
-            return try TagDetailResult.extract(from: response)
+            return try! TagDetailResult.extract(from: response)
         case .tag_top:
-            return try TagTopResult.extract(from: response)
+            return try! TagTopResult.extract(from: response)
         case .folder_favoriteFolder:
-            return try FavoriteFolderVideosResult.extract(from: response)
+            return try! FavoriteFolderVideosResult.extract(from: response)
         }
     }
 }
@@ -132,9 +133,10 @@ extension APIQuery {
             return try taskProcessorGroup.processVideoTags(
                 query.type.label, result as! VideoTagsResult.Result,
                 query, taskID, metadata)
-        case let query as UserSubmissionsResult.Query:
+//        case let query as UserSubmissionsResult.Query:
+        case let query as UserSubmissionSearchResult.Query:
             return try taskProcessorGroup.processUserSubmissions(
-                query.type.label, result as! UserSubmissionsResult.Result,
+                query.type.label, result as! UserSubmissionSearchResult.Result,
                 query, taskID, metadata)
         case let query as UserFavoriteFolderListResult.Query:
             return try taskProcessorGroup.processUserFavoriteFolderList(

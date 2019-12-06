@@ -66,14 +66,16 @@ let selectFolderVideoItemStatStatement = try! entityDB.connection.prepare(#"""
         WITH folder_video_item_tag AS
         (
             SELECT
-                json_extract(video_item.value, '$[0]') AS video_item_aid,
+                item_aid AS video_item_aid,
                 (tid IN certified_tag) AS is_certified_tag,
                 is_tag_list_complete AS with_complete_tags
-            FROM
-                folder, json_each(video_items) AS video_item
+            FROM folder_video_item
             LEFT JOIN video ON video_item_aid = video.aid
             LEFT JOIN video_tag ON video.aid = video_tag.aid
-            WHERE owner_uid = ? AND fid = ?
+            WHERE folder_video_item.folder_reference_id
+                = (SELECT folder_reference_id
+                    FROM folder
+                    WHERE owner_uid = ? AND fid = ?)
         )
         SELECT
             video_item_aid,
@@ -149,7 +151,8 @@ func judge(_ newFounds: NewFounds, source query: APIQuery, report: TaskReport)
                         }
                         // 如果视频来源于投稿页, 会冻结
                     // TODO: 考虑 up 主倾向?
-                    case is UserSubmissionsQuery:
+                    case is UserSubmissionsQuery,
+                         is UserSubmissionSearchQuery:
                         undecidedVideos.append(video)
                     // 如果视频来源于收藏夹, 会根据其收藏夹的评判来决定是否冻结
                     case let query as FavoriteFolderVideosQuery:
@@ -184,7 +187,9 @@ func judge(_ newFounds: NewFounds, source query: APIQuery, report: TaskReport)
             try! entityDB.connection.transaction {
                 if report == .shouldTurnPage {
                     switch query {
-                    case is UserSubmissionsQuery: break
+                    case is UserSubmissionsQuery,
+                         is UserSubmissionSearchQuery:
+                        break
                     case let query as APIQueryWithTID:
                         if !evaluateTag(tag: query.tid) {
                             report = .shouldFreezeFollowUpProgress

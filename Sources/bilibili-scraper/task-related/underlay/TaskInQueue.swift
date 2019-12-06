@@ -174,7 +174,11 @@ public struct TaskInQueue {
             case .video_tags:
                 return VideoTagsQuery(aid: id)
             case .user_submissions:
-                return UserSubmissionsQuery(uid: id, pageNumber: self.progress ?? 1)
+//                return UserSubmissionsQuery(uid: id, pageNumber: self.progress ?? 1)
+                return UserSubmissionSearchQuery(uid: id, keyword: "",
+                                                 order: .pubdate,
+                                                 pageNumber: self.progress ?? 1,
+                                                 pageSize: 100)
             case .user_favoriteFolderList:
                 return UserFavoriteFolderListQuery(uid: id)
             case .tag_detail:

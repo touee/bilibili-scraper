@@ -62,15 +62,3 @@ func checkAPIError(_ resp: Response) throws -> Response {
     }
     return resp
 }
-
-// 从原始数据中提取数据
-func ExtractData<T: Task, Result: Decodable>(_ task: T, resultType: Result.Type, transformer: JQ?) -> (Data) throws -> Result {
-    return {
-        var input = String(data: $0, encoding: .utf8)!
-        if let transformer = transformer {
-            input = try transformer.executeOne(input: input)
-        }
-        let result = try JSONDecoder().decode(resultType, from: input.data(using: .utf8)!)
-        return result
-    }
-}

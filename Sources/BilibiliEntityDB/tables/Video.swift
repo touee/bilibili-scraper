@@ -35,7 +35,7 @@ public struct VideoEntity {
     public var description: String?
     public var publish_time: Int64?
     public var c_time: Int64?
-    public var subregion_reference_id: Int?
+    public var subregion_id: Int?
     public var parts: Int?
     public var cover_url: String?
     public var duration: Int?
@@ -44,8 +44,8 @@ public struct VideoEntity {
     public var stats: VideoStats?
     public var volatile: String?
     
-    public init(aid: UInt64, title: String, uploader_uid: UInt64, ownership: Int?, description: String?, publish_time: Int64?, c_time: Int64?, subregion_reference_id: Int?, parts: Int?, cover_url: String?, duration: Int?, cid: UInt64?, state: Int?, stats: VideoStats?, volatile: String?) {
-        self.aid = aid; self.title = title; self.uploader_uid = uploader_uid; self.ownership = ownership; self.description = description; self.publish_time = publish_time; self.c_time = c_time; self.subregion_reference_id = subregion_reference_id; self.parts = parts; self.cover_url = cover_url; self.duration = duration; self.cid = cid; self.state = state; self.stats = stats; self.volatile = volatile?.trimmingCharacters(in: ["\n"])
+    public init(aid: UInt64, title: String, uploader_uid: UInt64, ownership: Int?, description: String?, publish_time: Int64?, c_time: Int64?, subregion_id: Int?, parts: Int?, cover_url: String?, duration: Int?, cid: UInt64?, state: Int?, stats: VideoStats?, volatile: String?) {
+        self.aid = aid; self.title = title; self.uploader_uid = uploader_uid; self.ownership = ownership; self.description = description; self.publish_time = publish_time; self.c_time = c_time; self.subregion_id = subregion_id; self.parts = parts; self.cover_url = cover_url; self.duration = duration; self.cid = cid; self.state = state; self.stats = stats; self.volatile = volatile?.trimmingCharacters(in: ["\n"])
     }
     
 }
@@ -62,8 +62,8 @@ class VideoTable: EntityDBTable {
         Column(name: "description",             type: .text,    isNullable: true),
         Column(name: "publish_time",            type: .integer, isNullable: true),
         Column(name: "c_time",                  type: .integer, isNullable: true),
-        Column(name: "subregion_reference_id",  type: .integer, isNullable: true,
-               references: (table: "subregion", column: "subregion_reference_id")),
+        Column(name: "subregion_id",  type: .integer, isNullable: true,
+               references: (table: "subregion", column: "subregion_id")),
         Column(name: "parts",                   type: .integer, isNullable: true),
         Column(name: "cover_url",               type: .text,    isNullable: true),
         Column(name: "duration",                type: .integer, isNullable: true),
@@ -157,7 +157,7 @@ class VideoTable: EntityDBTable {
             ":description":              video.description,
             ":publish_time":             video.publish_time,
             ":c_time":                   video.c_time,
-            ":subregion_reference_id":   video.subregion_reference_id,
+            ":subregion_id":             video.subregion_id,
             ":parts":                    video.parts,
             ":cover_url":                video.cover_url,
             ":duration":                 video.duration,
@@ -191,7 +191,7 @@ class VideoTable: EntityDBTable {
         video.description = castBinding(updated[4])
         video.publish_time = castBinding(updated[5])
         video.c_time = castBinding(updated[6])
-        video.subregion_reference_id = castBinding(updated[7])
+        video.subregion_id = castBinding(updated[7])
         //        self.tags = VideoEntity.decodeTags(updated[8] as! String?)
         video.parts = castBinding(updated[8])
         video.cover_url = castBinding(updated[9])
