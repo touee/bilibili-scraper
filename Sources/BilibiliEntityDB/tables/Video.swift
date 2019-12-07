@@ -94,8 +94,10 @@ class VideoTable: EntityDBTable {
         // TODO: Individual class
         try! self.connection.execute(#"""
             CREATE TABLE IF NOT EXISTS video_tag (
-                aid INTEGER NOT NULL,
-                tid INTEGER NOT NULL,
+                aid         INTEGER NOT NULL,
+                tid         INTEGER NOT NULL,
+                likes       INTEGER NULL,
+                dislikes    INTEGER NULL,
                 PRIMARY KEY (aid, tid),
                 FOREIGN KEY (aid) REFERENCES video (aid),
                 FOREIGN KEY (tid) REFERENCES tag (tid)
