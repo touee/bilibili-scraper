@@ -1,4 +1,4 @@
-CREATE TABLE Entity.Tag (
+CREATE TABLE "Entity"."Tag" (
     tid     BIGINT  NOT NULL,
     name    TEXT    NOT NULL,
 
@@ -12,10 +12,10 @@ CREATE TABLE Entity.Tag (
 
     extras JSONB[] NULL,
 
-    CONSTRAINT pkTag_tid PRIMARY KEY (tid)
+    CONSTRAINT "pkTag_tid" PRIMARY KEY (tid)
 );
 
-CREATE PROCEDURE Entity.sp_upsertTag(
+CREATE PROCEDURE "Entity"."sp_upsertTag" (
     _tid                            BIGINT,
     _name                           TEXT,
     "_type"                         SMALLINT,

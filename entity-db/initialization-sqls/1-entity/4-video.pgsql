@@ -1,4 +1,4 @@
-CREATE TABLE Entity.Video (
+CREATE TABLE "Entity"."Video" (
     aid             BIGINT  NOT NULL,
     title           TEXT    NOT NULL,
     uploader_uid    BIGINT  NOT NULL,
@@ -18,19 +18,19 @@ CREATE TABLE Entity.Video (
 
     extras JSONB[] NULL,
 
-    CONSTRAINT pkVideo_aid PRIMARY KEY (aid),
-    CONSTRAINT fkVideo_uploader_uid
+    CONSTRAINT "pkVideo_aid" PRIMARY KEY (aid),
+    CONSTRAINT "fkVideo_uploader_uid"
         FOREIGN KEY (uploader_uid)
-        REFERENCES Entity."User" (uid),
-    CONSTRAINT fkVideo_subregion_id
+        REFERENCES "Entity"."User" (uid),
+    CONSTRAINT "fkVideo_subregion_id"
         FOREIGN KEY (subregion_id)
-        REFERENCES Entity.SubregionForVideo (subregion_id)
+        REFERENCES "Entity"."SubregionForVideo" (subregion_id)
 );
 
-CREATE INDEX idx_Video_uploader_uid 
-    ON Entity.Video(uploader_uid);
+CREATE INDEX "idx_Video_uploader_uid"
+    ON "Entity"."Video"(uploader_uid);
 
-CREATE PROCEDURE Entity.sp_upsertVideo(
+CREATE PROCEDURE "Entity"."sp_upsertVideo" (
     _aid            BIGINT,
     _title          TEXT,
     _uploader_uid   BIGINT,
@@ -67,7 +67,7 @@ CREATE PROCEDURE Entity.sp_upsertVideo(
     END $$ LANGUAGE plpgsql;
 
 
-CREATE TABLE Entity.VideoStats (
+CREATE TABLE "Entity"."VideoStats" (
     aid BIGINT NOT NULL,
 
     views           INTEGER NOT NULL,
@@ -84,12 +84,12 @@ CREATE TABLE Entity.VideoStats (
 
     update_time TIMESTAMP NOT NULL,
 
-    CONSTRAINT pkVideoStats_aid PRIMARY KEY (aid),
-    CONSTRAINT fkVideoStats_aid 
-        FOREIGN KEY (aid) REFERENCES Entity.Video (aid)
+    CONSTRAINT "pkVideoStats_aid" PRIMARY KEY (aid),
+    CONSTRAINT "fkVideoStats_aid" 
+        FOREIGN KEY (aid) REFERENCES "Entity"."Video" (aid)
 );
 
-CREATE PROCEDURE Entity.sp_upsertVideoStats(
+CREATE PROCEDURE "Entity"."sp_upsertVideoStats" (
     _aid            BIGINT,
     _views          INTEGER,
     _danmakus       INTEGER,
@@ -104,7 +104,7 @@ CREATE PROCEDURE Entity.sp_upsertVideoStats(
     _update_time    TIMESTAMP
 ) AS $$
     BEGIN
-        INSERT INTO Entity.VideoStats (aid, views, danmakus, replies, favorites, coins, shares, highest_rank, likes, dislikes, remined, update_time)
+        INSERT INTO "Entity"."VideoStats" (aid, views, danmakus, replies, favorites, coins, shares, highest_rank, likes, dislikes, remined, update_time)
         VALUES (_aid, _views, _danmakus, _replies, _favorites, _coins, _shares, _highest_rank, _likes, _dislikes, _remined, _update_time)
         ON CONFLICT DO UPDATE
         SET views =         _views,
@@ -122,27 +122,27 @@ CREATE PROCEDURE Entity.sp_upsertVideoStats(
     END $$ LANGUAGE plpgsql;
 
 
-CREATE TABLE Entity.VideoTag (
+CREATE TABLE "Entity"."VideoTag" (
     aid             BIGINT NOT NULL,
     associated_tid  BIGINT NOT NULL,
 
     likes       INTEGER NULL,
     dislikes    INTEGER NULL,
 
-    CONSTRAINT pkVideoTag_aid_and_associated_tid
+    CONSTRAINT "pkVideoTag_aid_and_associated_tid"
         PRIMARY KEY (aid, associated_tid),
-    CONSTRAINT fkVideoTag_aid
+    CONSTRAINT "fkVideoTag_aid"
         FOREIGN KEY (aid) 
-        REFERENCES Entity.Video (aid),
-    CONSTRAINT fkVideoTag_associated_tid
+        REFERENCES "Entity"."Video" (aid),
+    CONSTRAINT "fkVideoTag_associated_tid"
         FOREIGN KEY (associated_tid) 
-        REFERENCES Entity.Tag (tid)
+        REFERENCES "Entity"."Tag" (tid)
 );
 
-CREATE INDEX idx_VideoTag_associated_tid 
-    ON Entity.VideoTag (associated_tid);
+CREATE INDEX "idx_VideoTag_associated_tid"
+    ON "Entity"."VideoTag" (associated_tid);
 
-CREATE PROCEDURE Entity.sp_upsertIncompleteVideoTag(
+CREATE PROCEDURE "Entity"."sp_upsertIncompleteVideoTag" (
     _aid                BIGINT,
     _associated_tid     BIGINT
 ) AS $$
@@ -158,7 +158,7 @@ CREATE PROCEDURE Entity.sp_upsertIncompleteVideoTag(
         ;
     END $$ LANGUAGE plpgsql;
 
-CREATE PROCEDURE Entity.sp_setCompleteVideoTagList(
+CREATE PROCEDURE "Entity"."sp_setCompleteVideoTagList" (
     _aid                BIGINT,
     _associated_tids    BIGINT[],
     _likes_array        INTEGER[],
@@ -167,63 +167,63 @@ CREATE PROCEDURE Entity.sp_setCompleteVideoTagList(
     BEGIN
         ASSERT array_length(associated_tids ,1) = array_length(likes_array ,1);
         ASSERT array_length(associated_tids ,1) = array_length(dislikes_array ,1);
-        DELETE FROM VideoTag
+        DELETE FROM "VideoTag"
         WHERE aid = _aid;
         FOR i IN array_lower(associated_tids, 1) .. array_upper(associated_tids, 1)
         LOOP
-            INSERT INTO VideoTag (aid, associated_tid, likes, dislikes)
+            INSERT INTO "VideoTag" (aid, associated_tid, likes, dislikes)
             VALUES (_aid, _associated_tids[i], _likes_array[i], _dislikes_array[i])
             -- should not conflict
             ;
         END LOOP;
-        UPDATE Video
+        UPDATE "Video"
         SET is_tag_list_complete = true
         WHERE aid = _aid
         ;
     END $$ LANGUAGE plpgsql;
 
-CREATE FUNCTION Entity.fn_updateCertifiedVideosAfterInsertVideoTags()
+CREATE FUNCTION "Entity"."fn_updateCertifiedVideosAfterInsertVideoTags"()
     RETURNS trigger AS $$
         BEGIN
-            INSERT INTO Analyzing.AutoCertifiedVideo(aid)
+            INSERT INTO "Analyzing"."AutoCertifiedVideo"(aid)
             SELECT DISTINCT aid
             FROM NEW
-            LEFT JOIN InputCertifiedTag USING (tid)
-            WHERE InputCertifiedTag.tid IS NOT NULL
+            LEFT JOIN "InputCertifiedTag" USING (tid)
+            WHERE "InputCertifiedTag"."tid" IS NOT NULL
                 ON CONFLICT DO NOTHING
             ;
         END
     $$ LANGUAGE plpgsql;
-CREATE TRIGGER tr_VideoTag_after_insert
+CREATE TRIGGER "tr_VideoTag_after_insert"
     AFTER INSERT 
-    ON Entity.VideoTag
+    ON "Entity"."VideoTag"
     FOR EACH STATEMENT
-    EXECUTE PROCEDURE Entity.fn_updateCertifiedVideosAfterInsertVideoTags();
+    EXECUTE PROCEDURE "Entity"."fn_updateCertifiedVideosAfterInsertVideoTags"();
     
-CREATE FUNCTION Entity.fn_updateCertifiedVideosAfterDeleteVideoTags()
+CREATE FUNCTION "Entity"."fn_updateCertifiedVideosAfterDeleteVideoTags"()
     RETURNS trigger AS $$
         BEGIN
-            WITH VideoNotCertifiedAnyMore AS (
+            WITH "VideoNotCertifiedAnyMore" AS (
                 SELECT aid
                 FROM NEW
-                LEFT JOIN VideoTag USING (aid)
+                LEFT JOIN "VideoTag" USING (aid)
                 GROUP BY aid
                 HAVING COALESCE(
                     SUM(EXISTS (
                             SELECT * 
-                            FROM InputCertifiedTag 
-                            WHERE InputCertifiedTag.tid = VideoTag.tid)
+                            FROM "InputCertifiedTag"
+                            WHERE "InputCertifiedTag".tid = "VideoTag".tid)
                         ), 0) = 0
             )
-            DELETE FROM AutoCertifiedVideo
-            USING VideoNotCertifiedAnyMore
-            WHERE AutoCertifiedVideo.aid = VideoNotCertifiedAnyMore.aid
+            DELETE FROM "AutoCertifiedVideo"
+            USING "VideoNotCertifiedAnyMore"
+            WHERE "AutoCertifiedVideo".aid = "VideoNotCertifiedAnyMore".aid
             ;
         END
     $$ LANGUAGE plpgsql;
-CREATE TRIGGER tr_VideoTag_after_delete
+CREATE TRIGGER "tr_VideoTag_after_delete"
     AFTER DELETE 
-    ON Entity.VideoTag
+    ON "Entity"."VideoTag"
     FOR EACH STATEMENT
-    EXECUTE PROCEDURE Entity.fn_updateCertifiedVideosAfterDeleteVideoTags();
+    EXECUTE PROCEDURE "Entity"."fn_updateCertifiedVideosAfterDeleteVideoTags"();
     

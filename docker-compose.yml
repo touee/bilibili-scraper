@@ -1,0 +1,20 @@
+version: '3.7'
+# secrets:
+#     BILIBILI_SCRAPING__ENTITY_DB__POSTGRES_PASSWORD:
+#         external: true
+services: 
+    entity-db:
+        build: 
+            context: ./entity-db/
+            dockerfile: Dockerfile
+        # secrets:
+        #     - BILIBILI_SCRAPING__ENTITY_DB__POSTGRES_PASSWORD
+        volumes: 
+            - ./workdir/entity-db/data:/var/lib/postgresql/data
+        environment: 
+            PGDATA: /var/lib/postgresql/data/pgdata
+        ports: 
+            - "127.0.0.1:2345:5432"
+        env_file: 
+            - ./entity-db/secrets.env
+        

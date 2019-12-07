@@ -7,8 +7,11 @@ __pycache__
 
 temp/
 
-/workdir/
-/workdir-backup.zip
+/workdir/*
+!/workdir/entity-db
+/workdir/entity-db/*
+!/workdir/entity-db/.gitkeep
+
 /other-stuff/
 
 /env.sh

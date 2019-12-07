@@ -1,4 +1,4 @@
-CREATE TABLE Entity.Folder (
+CREATE TABLE "Entity"."Folder" (
     -- 或许可以用 media_id((fid*100 + owner_uid%100)?) 替代?
     folder_reference_id BIGINT
         GENERATED ALWAYS AS IDENTITY (
@@ -14,15 +14,15 @@ CREATE TABLE Entity.Folder (
 
     extras JSONB[] NULL,
 
-    CONSTRAINT pkFolder_folder_reference_id
+    CONSTRAINT "pkFolder_folder_reference_id"
         PRIMARY KEY (folder_reference_id),
-    CONSTRAINT fkFolder_owner_uid
+    CONSTRAINT "fkFolder_owner_uid"
         FOREIGN KEY (owner_uid)
-        REFERENCES Entity."User" (uid),
-    CONSTRAINT uqFolder_owner_uid_and_fid UNIQUE (owner_uid, fid)
+        REFERENCES "Entity"."User" (uid),
+    CONSTRAINT "uqFolder_owner_uid_and_fid" UNIQUE (owner_uid, fid)
 );
 
-CREATE PROCEDURE Entity.sp_upsertFolder(
+CREATE PROCEDURE "Entity"."sp_upsertFolder"(
     _owner_uid              INTEGER,
     _fid                    INTEGER,
     _name                   TEXT,
@@ -35,7 +35,7 @@ CREATE PROCEDURE Entity.sp_upsertFolder(
     DECLARE
         __extras JSONB[] := CASE _extra IS NULL WHEN true THEN ARRAY[] ELSE ARRAY[_extra] END;
     BEGIN
-        INSERT INTO Video (tid, name, "type", cover_url, head_cover_url, description, short_description, create_time, extras)
+        INSERT INTO "Video" (tid, name, "type", cover_url, head_cover_url, description, short_description, create_time, extras)
         VALUES (_tid, _name, "_type", _cover_url, _head_cover_url, _description, _short_description, _create_time, __extras)
         ON CONFLICT DO UPDATE
         SET capacity =              COALESCE(_capacity, capacity),
@@ -47,25 +47,25 @@ CREATE PROCEDURE Entity.sp_upsertFolder(
     END $$ LANGUAGE plpgsql;
 
 
-CREATE TABLE Entity.FolderVideoItem (
+CREATE TABLE "Entity"."FolderVideoItem" (
     folder_reference_id BIGINT      NOT NULL,
     item_aid            BIGINT      NOT NULL,
     favorite_time       TIMESTAMP   NOT NULL,
 
-    CONSTRAINT pkFolderVideoItem_folder_reference_id_and_item_aid
+    CONSTRAINT "pkFolderVideoItem_folder_reference_id_and_item_aid"
         PRIMARY KEY (folder_reference_id, item_aid),
-    CONSTRAINT fkFolderVideoItem_folder_reference_id
+    CONSTRAINT "fkFolderVideoItem_folder_reference_id"
         FOREIGN KEY (folder_reference_id)
-        REFERENCES Entity.Folder (folder_reference_id),
-    CONSTRAINT fkFolderVideoItem_item_aid
+        REFERENCES "Entity"."Folder" (folder_reference_id),
+    CONSTRAINT "fkFolderVideoItem_item_aid"
         FOREIGN KEY (item_aid)
-        REFERENCES Entity.Video (aid)
+        REFERENCES "Entity"."Video" (aid)
 );
 
-CREATE INDEX idx_FolderVideoItem_item_aid 
-    ON Entity.FolderVideoItem (item_aid);
+CREATE INDEX "idx_FolderVideoItem_item_aid"
+    ON "Entity"."FolderVideoItem" (item_aid);
 
-CREATE PROCEDURE Entity.sp_upsertFolderVideoItems(
+CREATE PROCEDURE "Entity"."sp_upsertFolderVideoItems" (
     _owner_uid      BIGINT,
     _fid            BIGINT,
     _item_aids      BIGINT[],
@@ -76,7 +76,7 @@ CREATE PROCEDURE Entity.sp_upsertFolderVideoItems(
     BEGIN
         SELECT folder_reference_id
         INTO _folder_reference_id
-        FROM Folder 
+        FROM "Folder"
         WHERE owner_uid = _owner_uid AND fid = _fid
         ;
         FOR i IN array_lower(_item_aids, 1) .. array_upper(_item_aids, 1)

@@ -1,25 +1,25 @@
-CREATE TABLE Entity.SubregionForVideo (
+CREATE TABLE "Entity"."SubregionForVideo" (
     -- (视频之外的媒介也被算成了分区, 
     -- 其中存在大于 SMALLINT 最大范围的数字. 
     -- 但这里只存视频的分区)
     subregion_id            SMALLINT    NULL,
     name                    TEXT        NULL,
 
-    CONSTRAINT pkSubregionForVideo_subregion_id
+    CONSTRAINT "pkSubregionForVideo_subregion_id"
         PRIMARY KEY (subregion_id)
 );
 
-CREATE PROCEDURE Entity.sp_upsertSubregion(
+CREATE PROCEDURE "Entity"."sp_upsertSubregion" (
     _subregion_id    SMALLINT,
     _name            TEXT
 ) AS $$
     BEGIN
-        INSERT INTO Entity.SubregionForVideo (subregion_id, name)
+        INSERT INTO "Entity"."SubregionForVideo" (subregion_id, name)
         VALUES (_subregion_id, _name)
         ON CONFLICT DO NOTHING;
     END $$ LANGUAGE plpgsql;
 
--- CREATE FUNCTION Entity.fn_getSubregionReferenceID(
+-- CREATE FUNCTION "Entity"."fn_getSubregionReferenceID" (
 --     _subregion_id    SMALLINT,
 --     _name            TEXT
 -- ) RETURNS SMALLINT AS $$
@@ -43,7 +43,7 @@ CREATE PROCEDURE Entity.sp_upsertSubregion(
 --                 RETURN _subregion_reference_id;
 --             END IF;
 --             -- 返回新生成的 reference_id
---             INSERT INTO Entity.SubregionForVideo (subregion_id, name)
+--             INSERT INTO "Entity"."SubregionForVideo" (subregion_id, name)
 --             VALUES (_subregion_id, __name)
 --             RETURNING subregion_reference_id AS _subregion_reference_id
 --             ;

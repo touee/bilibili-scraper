@@ -1,4 +1,4 @@
-CREATE TABLE Entity."User" (
+CREATE TABLE "Entity"."User" (
     uid     BIGINT  NOT NULL,
     name    TEXT    NOT NULL,
 
@@ -9,10 +9,10 @@ CREATE TABLE Entity."User" (
 
     extras JSONB[] NULL,
 
-    CONSTRAINT pkUser_uid PRIMARY KEY (uid)
+    CONSTRAINT "pkUser_uid" PRIMARY KEY (uid)
 );
 
-CREATE PROCEDURE Entity.sp_upsertUser(
+CREATE PROCEDURE "Entity"."sp_upsertUser" (
     _uid                            BIGINT,
     _name                           TEXT,
     _avatar_url                     TEXT,
@@ -21,7 +21,7 @@ CREATE PROCEDURE Entity.sp_upsertUser(
     DECLARE
         __extras JSONB[] := CASE _extra IS NULL WHEN true THEN ARRAY[] ELSE ARRAY[_extra] END;
     BEGIN
-        INSERT INTO Entity."User" (uid, name, avatar_url, hides_folders, current_visible_video_count, extras)
+        INSERT INTO "Entity"."User" (uid, name, avatar_url, hides_folders, current_visible_video_count, extras)
         VALUES (_uid, _name, _avatar_url, NULL, NULL, __extras)
         ON CONFLICT DO UPDATE
         SET avatar_url =                    COALESCE(_avatar_url, avatar_url),
@@ -29,22 +29,22 @@ CREATE PROCEDURE Entity.sp_upsertUser(
             ;
     END $$ LANGUAGE plpgsql;
 
-CREATE PROCEDURE Entity.sp_updateUserHidesFolders(
+CREATE PROCEDURE "Entity"."sp_updateUserHidesFolders" (
     _uid            BIGINT,
     _hides_folders  BOOLEAN
 ) AS $$
     BEGIN
-        UPDATE Entity.User
+        UPDATE "Entity"."User"
         SET hides_folders = _hides_folders
         WHERE uid = _uid;
     END $$ LANGUAGE plpgsql;
 
-CREATE PROCEDURE Entity.sp_updateUserCurrentVisibleVideoCount(
+CREATE PROCEDURE "Entity"."sp_updateUserCurrentVisibleVideoCount" (
     _uid            BIGINT,
     _count          INTEGER
 ) AS $$
     BEGIN
-        UPDATE Entity.User
+        UPDATE "Entity"."User"
         SET current_visible_video_count = _count
         WHERE uid = _uid;
     END $$ LANGUAGE plpgsql;
