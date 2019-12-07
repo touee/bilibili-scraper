@@ -5,7 +5,7 @@ internal func env(_ key: String) -> String? {
 }
 
 internal func mkdirAll(_ path: String) throws {
-    try FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true, attributes: [FileAttributeKey.posixPermissions: 0o644])
+    try FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true, attributes: [FileAttributeKey.posixPermissions: 0o744])
 }
 internal func createFile(_ path: String) -> Bool {
     return FileManager.default.createFile(atPath: path, contents: nil, attributes: [FileAttributeKey.posixPermissions: 0o644])
