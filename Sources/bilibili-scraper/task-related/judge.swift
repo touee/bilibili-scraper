@@ -1,5 +1,7 @@
 import Foundation
 
+import SwiftyJSON
+
 import BilibiliAPI
 import BilibiliEntityDB
 
@@ -112,16 +114,15 @@ func evaluateFolder(folder fid: UInt64, ofUser uid: UInt64) -> Bool {
     return false
 }
 
-struct NewFounds {
-    var videos: [UInt64] // videoRelatedVideos videoTags
+struct JudgedCollection {
     var users: [UInt64] // userSubmissions userFavoriteFolderList
     var tags: [UInt64] // tagDetail tagTop
+    var videos: [UInt64] // videoRelatedVideos videoTags
     var folders: [(uid: UInt64, fid: UInt64)] // folder
 }
 
-// TODO: 独立文件
-func judge(_ newFounds: NewFounds, source query: APIQuery, report: TaskReport)
-    -> (passed: NewFounds, undecided: NewFounds, report: TaskReport) {
+func _judge(_ newFounds: EntityCollection, source query: APIQuery, report: TaskReport)
+    -> (passed: JudgedCollection, undecided: JudgedCollection, report: TaskReport) {
         var report = report
         var passedVideos = [UInt64]()
         var undecidedVideos = [UInt64]()
@@ -130,36 +131,36 @@ func judge(_ newFounds: NewFounds, source query: APIQuery, report: TaskReport)
         var passedFolders = [(uid: UInt64, fid: UInt64)]()
         
         
-        do { // videos
+        if newFounds.videos != nil { // videos
             try! entityDB.connection.transaction {
-                for video in newFounds.videos {
+                for video in newFounds.videos! {
                     switch query {
                     // 如果视频来源于其他视频的相关视频, 会根据那些其他视频中是否有认证的视频来决定是否冻结
                     case is VideoRelatedVideosQuery:
-                        let reverseRelatedVideos = assistantDB.getReversedVideoRelatedVideosReferrers(for: video)
+                        let reverseRelatedVideos = assistantDB.getReversedVideoRelatedVideosReferrers(for: video.aid)
                         if (getCertifiedVideoCount(among: reverseRelatedVideos) ?? 0) > 0 {
-                            passedVideos.append(video)
+                            passedVideos.append(video.aid)
                         } else {
-                            undecidedVideos.append(video)
+                            undecidedVideos.append(video.aid)
                         }
                     // 如果视频来源于标签页, 会根据该标签是否认证来决定是否冻结
                     case let query as APIQueryWithTID:
                         if certifiedTags.contains(query.tid) {
-                            passedVideos.append(video)
+                            passedVideos.append(video.aid)
                         } else {
-                            undecidedVideos.append(video)
+                            undecidedVideos.append(video.aid)
                         }
                         // 如果视频来源于投稿页, 会冻结
                     // TODO: 考虑 up 主倾向?
                     case is UserSubmissionsQuery,
                          is UserSubmissionSearchQuery:
-                        undecidedVideos.append(video)
+                        undecidedVideos.append(video.aid)
                     // 如果视频来源于收藏夹, 会根据其收藏夹的评判来决定是否冻结
                     case let query as FavoriteFolderVideosQuery:
                         if evaluateFolder(folder: query.fid, ofUser: query.uid) {
-                            passedVideos.append(video)
+                            passedVideos.append(video.aid)
                         } else {
-                            undecidedVideos.append(video)
+                            undecidedVideos.append(video.aid)
                         }
                         
                     default: fatalError()
@@ -168,20 +169,20 @@ func judge(_ newFounds: NewFounds, source query: APIQuery, report: TaskReport)
             }
             
             
-            do { // users
+            if newFounds.users != nil { // users
                 // 直接通过
                 // TODO: 对于稿件任务, 只通过曾上传过相关视频的用户
-                passedUsers = newFounds.users
+                passedUsers = newFounds.users!.map { $0.uid }
             }
             
-            do { // tags
+            if newFounds.tags != nil { // tags
                 // 第一页标签直接通过, 之后每页都会进行评估
-                passedTags = newFounds.tags
+                passedTags = newFounds.tags!.map { $0.tid }
             }
             
-            do { // folders
+            if newFounds.folders != nil { // folders
                 // 第一页标签直接通过, 之后每页都会进行评估
-                passedFolders = newFounds.folders
+                passedFolders = newFounds.folders!.map { (uid: $0.owner_uid, fid: $0.fid) }
             }
             
             try! entityDB.connection.transaction {
@@ -204,9 +205,51 @@ func judge(_ newFounds: NewFounds, source query: APIQuery, report: TaskReport)
             }
         }
         
-        return (passed: NewFounds(videos: passedVideos, users: passedUsers,
-                                  tags: passedTags, folders: passedFolders),
-                undecided: NewFounds(videos: undecidedVideos, users: [],
-                                     tags: [], folders: []),
+        return (passed: JudgedCollection(users: passedUsers, tags: passedTags,
+                                  videos: passedVideos, folders: passedFolders),
+                undecided: JudgedCollection(users: [], tags: [],
+                                     videos: undecidedVideos, folders: []),
                 report: report)
+}
+
+func judge(_ newFounds: EntityCollection,
+             taskID: Int64, source query: APIQuery, metadata: JSON?,
+             report: TaskReport) -> ([EnqueuedTask], TaskReport) {
+    
+    let (passed, undecided, report) = _judge(newFounds, source: query, report: report)
+    
+    var tasks = [EnqueuedTask]()
+    let judgedVideos = passed.videos.map { ($0, false /*shoudFreeze*/) } + undecided.videos.map { ($0, true) }
+    _ = judgedVideos.map {
+        tasks += [EnqueuedTask(VideoTagsQuery(aid: $0.0).buildTask(), shouldFreeze: false, priority: $0.1 ? 0 : -1, referrer: .ignore)]
+//        tasks += [EnqueuedTask(VideoTagsQuery(aid: $0.0).buildTask(), shouldFreeze: false, priority: 1.2, referrer: .ignore)]
+        tasks += [EnqueuedTask(VideoRelatedVideosQuery(aid: $0.0).buildTask(), shouldFreeze: $0.1, referrer: .ignore)]
+    }
+    let judgedUsers = passed.users.map { ($0, false) } + undecided.users.map { ($0, true) }
+    _ = judgedUsers.map {
+        tasks += [EnqueuedTask(UserFavoriteFolderListQuery(uid: $0.0).buildTask(), shouldFreeze: $0.1, referrer: .ignore)]
+//        tasks += [EnqueuedTask(UserSubmissionsQuery(uid: $0.0).buildTask(), shouldFreeze: $0.1, referrer: .ignore)]
+        tasks += [EnqueuedTask(UserSubmissionsQuery(uid: $0.0).buildTask(), shouldFreeze: true, referrer: .ignore)]
+    }
+    let judgedTags = passed.tags.map { ($0, false) } + undecided.tags.map { ($0, true) }
+    _ = judgedTags.map {
+        tasks += [EnqueuedTask(TagDetailQuery(tid: $0.0).buildTask(), shouldFreeze: $0.1, referrer: .ignore)]
+        tasks += [EnqueuedTask(TagTopQuery(tid: $0.0).buildTask(), shouldFreeze: $0.1, referrer: .ignore)]
+    }
+    let judgedFolders = passed.folders.map { ($0, false) } + undecided.folders.map { ($0, true) }
+    _ = judgedFolders.map {
+//        tasks += [EnqueuedTask(UserFavoriteFolderQuery(uid: $0.0.uid, fid: $0.0.fid).buildTask(), shouldFreeze: $0.1, referrer: .ignore)]
+        tasks += [EnqueuedTask(FavoriteFolderVideosQuery(uid: $0.0.uid, fid: $0.0.fid).buildTask(), shouldFreeze: $0.1, priority: 1.1, referrer: .ignore)]
+    }
+        
+//    logger.log(.info, msg: #"""
+//
+//        完成 [\#(taskID)]\#(query):
+//            存在: 视频 \#(videos?.count ?? 0), 用户 \#(users?.count ?? 0), 标签 \#(tags?.count ?? 0), 收藏夹 \#(folders?.count ?? 0);
+//            新任务: 视频 \#(judgedVideos.count), 用户 \#(judgedUsers.count), 标签 \#(judgedTags.count), 收藏夹 \#(judgedFolders.count);
+//            通过评估: 视频 \#(passed.videos.count), 用户 \#(passed.users.count), 标签 \#(passed.tags.count), 收藏夹 \#(passed.folders.count);
+//            当前任务报告: \#(report)
+//        """#, functionName: #function, lineNum: #line, fileName: #file)
+    
+    return (tasks, report)
 }

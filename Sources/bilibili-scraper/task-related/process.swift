@@ -18,14 +18,15 @@ func concatOptionalArrays<T>(_ a: Array<T>?, _ b: Array<T>?) -> Array<T>? {
 }
 
 // TODO: 移到 assistantDB 相关的文件中去
-func recordAssistantData(_ newFounds: NewFounds, source query: APIQuery) {
+func recordAssistantData(_ newFounds: EntityCollection, source query: APIQuery) {
     if let query = query as? APIQueryWithTID {
-        assistantDB.addSampleVideos(for: query.tid, aids: newFounds.videos)
+        assistantDB.addSampleVideos(for: query.tid,
+                                    aids: newFounds.videos!.map { $0.aid })
     } else if let query = query as? VideoRelatedVideosQuery {
-        for aid in newFounds.videos {
+        for video in newFounds.videos! {
             assistantDB
                 .addReversedVideoRelatedVideosReferrer(
-                    for: aid, referrer: query.aid)
+                    for: video.aid, referrer: query.aid)
         }
     }
 }
@@ -41,7 +42,7 @@ let selectFolderTaskStatement = try! scheduler.storage.db.prepare(#"""
     """#)
 // TODO: 移到 taskDB 相关的文件中去
 // FIXME: TaskDB 中的 referrers 便没有意义了
-func removeDuplicatedFounds(_ newFounds: inout NewFounds) {
+func removeDuplicatedFounds(_ newFounds: EntityCollection) {
     func isTaskInQueue(type: TaskType, id: UInt64) -> Bool {
         return selectTaskWithDirectQueryIDStatement.bind(type.rawValue, Int64(id)).fatchNilOrFirstOnlyRow() != nil
     }
@@ -49,94 +50,43 @@ func removeDuplicatedFounds(_ newFounds: inout NewFounds) {
         return selectTaskWithDirectQueryIDStatement.bind(Int64(uid), Int64(fid)).fatchNilOrFirstOnlyRow() != nil
     }
     try! scheduler.storage.db.transaction {
-        newFounds.videos = newFounds.videos.filter { !isTaskInQueue(type: .video_relatedVideos, id: $0) }
-        newFounds.users = newFounds.users.filter { !isTaskInQueue(type: .user_submissions, id: $0) }
-        newFounds.tags = newFounds.tags.filter { !isTaskInQueue(type: .tag_detail, id: $0) }
-        newFounds.folders = newFounds.folders.filter { !isFolderTaskInQueue(uid: $0.uid, fid: $0.fid) }
+        if newFounds.videos != nil {
+            newFounds.videos = newFounds.videos!.filter { !isTaskInQueue(type: .video_relatedVideos, id: $0.aid) }
+        }
+        if newFounds.users != nil {
+            newFounds.users = newFounds.users!.filter { !isTaskInQueue(type: .user_submissions, id: $0.uid) }
+        }
+        if newFounds.tags != nil {
+            newFounds.tags = newFounds.tags!.filter { !isTaskInQueue(type: .tag_detail, id: $0.tid) }
+        }
+        if newFounds.folders != nil {
+            newFounds.folders = newFounds.folders!.filter { !isFolderTaskInQueue(uid: $0.owner_uid, fid: $0.fid) }
+        }
     }
 }
 
-func collect(users: [UserEntity]?, tags: [TagEntity]?,
-             videos: [VideoEntity]?, folders: [FolderEntity]?,
-             subregions: [SubregionEntity]?,
-             folderItmes: (uid: UInt64, fid: UInt64, items: [FolderVideo])?,
-             videosTags: [(aid: UInt64, tags: [VideoTag])]?,
-             userCurrentVisibleVideoCount: (UInt64, Int)?,
-             taskID: Int64, query: APIQuery, metadata: JSON?,
-             report: TaskReport) -> TaskReport {
-    entityDB.update(users: users, tags: tags, subregions: subregions, videos: videos, folders: folders, folderItmes: folderItmes, videosTags: videosTags, userCurrentVisibleVideoCount: userCurrentVisibleVideoCount)
-    
-    var newFounds = NewFounds(
-        videos: concatOptionalArrays(
-            videos?.map { $0.aid },
-            nil/*folderItmes?.items.map { $0.aid } */) ?? [],
-        users: users?.map { $0.uid } ?? [],
-        tags: tags?.map { $0.tid } ?? [],
-        folders: folders?.map { (uid: $0.owner_uid, fid: $0.fid) }  ?? []
-    )
-    
-    recordAssistantData(newFounds, source: query)
-    
-    removeDuplicatedFounds(&newFounds)
-    
-    let (passed, undecided, report) = judge(newFounds, source: query, report: report)
-    
-    var tasks = [EnqueuedTask]()
-    let judgedVideos = passed.videos.map { ($0, false /*shoudFreeze*/) } + undecided.videos.map { ($0, true) }
-    _ = judgedVideos.map {
-        tasks += [EnqueuedTask(VideoTagsQuery(aid: $0.0).buildTask(), shouldFreeze: false, priority: $0.1 ? 0 : -1, referrer: .ignore)]
-//        tasks += [EnqueuedTask(VideoTagsQuery(aid: $0.0).buildTask(), shouldFreeze: false, priority: 1.2, referrer: .ignore)]
-        tasks += [EnqueuedTask(VideoRelatedVideosQuery(aid: $0.0).buildTask(), shouldFreeze: $0.1, referrer: .ignore)]
-    }
-    let judgedUsers = passed.users.map { ($0, false) } + undecided.users.map { ($0, true) }
-    _ = judgedUsers.map {
-        tasks += [EnqueuedTask(UserFavoriteFolderListQuery(uid: $0.0).buildTask(), shouldFreeze: $0.1, referrer: .ignore)]
-//        tasks += [EnqueuedTask(UserSubmissionsQuery(uid: $0.0).buildTask(), shouldFreeze: $0.1, referrer: .ignore)]
-        tasks += [EnqueuedTask(UserSubmissionsQuery(uid: $0.0).buildTask(), shouldFreeze: true, referrer: .ignore)]
-    }
-    let judgedTags = passed.tags.map { ($0, false) } + undecided.tags.map { ($0, true) }
-    _ = judgedTags.map {
-        tasks += [EnqueuedTask(TagDetailQuery(tid: $0.0).buildTask(), shouldFreeze: $0.1, referrer: .ignore)]
-        tasks += [EnqueuedTask(TagTopQuery(tid: $0.0).buildTask(), shouldFreeze: $0.1, referrer: .ignore)]
-    }
-    let judgedFolders = passed.folders.map { ($0, false) } + undecided.folders.map { ($0, true) }
-    _ = judgedFolders.map {
-//        tasks += [EnqueuedTask(UserFavoriteFolderQuery(uid: $0.0.uid, fid: $0.0.fid).buildTask(), shouldFreeze: $0.1, referrer: .ignore)]
-        tasks += [EnqueuedTask(FavoriteFolderVideosQuery(uid: $0.0.uid, fid: $0.0.fid).buildTask(), shouldFreeze: $0.1, priority: 1.1, referrer: .ignore)]
-    }
-    
-    scheduler.addTask(tasks)
-    
-    logger.log(.info, msg: #"""
-        完成 [\#(taskID)]\#(query):
-            存在: 视频 \#(videos?.count ?? 0), 用户 \#(users?.count ?? 0), 标签 \#(tags?.count ?? 0), 收藏夹 \#(folders?.count ?? 0);
-            新任务: 视频 \#(judgedVideos.count), 用户 \#(judgedUsers.count), 标签 \#(judgedTags.count), 收藏夹 \#(judgedFolders.count);
-            通过评估: 视频 \#(passed.videos.count), 用户 \#(passed.users.count), 标签 \#(passed.tags.count), 收藏夹 \#(passed.folders.count);
-            当前任务报告: \#(report)
-        """#, functionName: #function, lineNum: #line, fileName: #file)
-    
-    return report
-}
+typealias TaskResultEntityExtractor<ResultContainer> =
+    (_ result: ResultContainer.Result, _ query: ResultContainer.Query) throws
+    -> (EntityCollection, EntityExtra, TaskReport) where ResultContainer: APIResultContainer
+// TODO: `TaskReport` should be moved to other lower places
 
-typealias TaskResultProcessor<ResultContainer> = (_ label: String, _ result: ResultContainer.Result, _ query: ResultContainer.Query, _ taskID: Int64, _ metadata: JSON?) throws -> TaskReport where ResultContainer: APIResultContainer
-
-struct TaskProcessorGroup {
-    let processSearch:
-    TaskResultProcessor<SearchResult>
-    let processVideoRelatedVideos:
-    TaskResultProcessor<VideoRelatedVideosResult>
-    let processVideoTags:
-    TaskResultProcessor<VideoTagsResult>
-    let processUserSubmissions:
-    TaskResultProcessor<UserSubmissionSearchResult>
-    let processUserFavoriteFolderList:
-    TaskResultProcessor<UserFavoriteFolderListResult>
-    let processTagDetail:
-    TaskResultProcessor<TagDetailResult>
-    let processTagTop:
-    TaskResultProcessor<TagTopResult>
-    let processUserFavoriteFolder:
-    TaskResultProcessor<FavoriteFolderVideosResult>
+struct TaskResultEntityExtractorGroup {
+    let extractEntitiesFromSearchResult:
+    TaskResultEntityExtractor<SearchResult>
+    let extractEntitiesFromVideoRelatedVideosResult:
+    TaskResultEntityExtractor<VideoRelatedVideosResult>
+    let extractEntitiesFromVideoTagsResult:
+    TaskResultEntityExtractor<VideoTagsResult>
+    let extractEntitiesFromUserSubmissionsResult:
+    TaskResultEntityExtractor<UserSubmissionSearchResult>
+    let extractEntitiesFromUserFavoriteFolderListResult:
+    TaskResultEntityExtractor<UserFavoriteFolderListResult>
+    let extractEntitiesFromTagDetailResult:
+    TaskResultEntityExtractor<TagDetailResult>
+    let extractEntitiesFromTagTopResult:
+    TaskResultEntityExtractor<TagTopResult>
+    let extractEntitiesFromUserFavoriteFolderResult:
+    TaskResultEntityExtractor<FavoriteFolderVideosResult>
 }
 
 extension GeneralVideoItem.VideoStats {
@@ -149,13 +99,13 @@ extension GeneralVideoItem.VideoStats {
     }
 }
 
-let taskProcessorGroup = TaskProcessorGroup(
+let taskResultEntityExtractorGroup = TaskResultEntityExtractorGroup(
     // 搜索
-    processSearch: { _, _, _, _, _ in
+    extractEntitiesFromSearchResult: { _, _ in
         fatalError("unimplemented")
 },
     // 相关视频
-    processVideoRelatedVideos: { (_, result, query, taskID, metadata) in
+    extractEntitiesFromVideoRelatedVideosResult: { (result, query) in
         var videos = [VideoEntity]()
         var users = [UserEntity]()
         var subregions = [SubregionEntity]()
@@ -168,16 +118,16 @@ let taskProcessorGroup = TaskProcessorGroup(
             users.append(UserEntity(uid: video.uploader_uid, name: video.uploader_name, avatar_url: video.uploader_profile_image_url))
         }
         
-        return collect(users: users, tags: nil,
-                       videos: videos, folders: nil,
-                       subregions: subregions,
-                       folderItmes: nil, videosTags: nil,
-                       userCurrentVisibleVideoCount: nil,
-                       taskID: taskID, query: query,
-                       metadata: metadata, report: .done)
+        return (.init(users: users, tags: nil,
+                      videos: videos, folders: nil,
+                      subregions: subregions),
+                .init(folderItmes: nil, videosTags: nil,
+                      userCurrentVisibleVideoCount: nil),
+                .done)
+            
 },
     // 视频拥有的标签
-    processVideoTags: { (_, result, query, taskID, metadata) in
+    extractEntitiesFromVideoTagsResult: { (result, query) in
         var tags = [TagEntity]()
         
         // 记录 tag 所属信息
@@ -188,16 +138,15 @@ let taskProcessorGroup = TaskProcessorGroup(
             tags.append(TagEntity(tid: tag.tid, name: tag.name, type: tag.type, cover_url: tag.cover_url, head_cover_url: tag.head_cover_url, description: tag.description, short_description: tag.short_description, c_time: tag.c_time, volatile: tag.other_interesting_stuff))
         }
         
-        return collect(users: nil, tags: tags,
-                       videos: nil, folders: nil,
-                       subregions: nil,
-                       folderItmes: nil, videosTags: [videoTags],
-                       userCurrentVisibleVideoCount: nil,
-                       taskID: taskID, query: query,
-                       metadata: metadata, report: .done)
+        return (.init(users: nil, tags: tags,
+                      videos: nil, folders: nil,
+                      subregions: nil),
+                .init(folderItmes: nil, videosTags: [videoTags],
+                      userCurrentVisibleVideoCount: nil),
+                .done)
 },
     // 用户投稿
-    processUserSubmissions: { (_, result, query, taskID, metadata) in // TODO: 换成了 UserSubmissionSearchResult
+    extractEntitiesFromUserSubmissionsResult: { (result, query) in // TODO: 换成了 UserSubmissionSearchResult
         var videos = [VideoEntity]()
         var subregions = [SubregionEntity]()
 //        let table = result.subregion_id_name_table ?? [:]
@@ -209,18 +158,18 @@ let taskProcessorGroup = TaskProcessorGroup(
                                       subregion_id: video.subregion_id, parts: nil, cover_url: video.cover_url, duration: video.duration, cid: nil, state: nil, stats: nil, volatile: video.other_interesting_stuff))
         }
         
-        return collect(users: nil, tags: nil,
-                       videos: videos, folders: nil,
-                       subregions: subregions,
-                       folderItmes: nil, videosTags: nil,
-                       userCurrentVisibleVideoCount: (query.uid, result.total_count),
-                       taskID: taskID, query: query,
-                       metadata: metadata,
-                       report: (result.submissions.count == 0
-                    || (query.pageNumber ?? 1)+1 > ((result.total_count-1)/100)+1) ? .done : .shouldTurnPage)
+        return (.init(users: nil, tags: nil,
+                      videos: videos, folders: nil,
+                      subregions: subregions),
+                .init(folderItmes: nil, videosTags: nil,
+                      userCurrentVisibleVideoCount: (
+                        query.uid, result.total_count)),
+                (result.submissions.count == 0 || (query.pageNumber ?? 1)+1
+                    > ((result.total_count-1)/100)+1) ?
+                        .done : .shouldTurnPage)
 },
     // 用户收藏夹列表
-    processUserFavoriteFolderList: { (_, result, query, taskID, metadata) in
+    extractEntitiesFromUserFavoriteFolderListResult: { (result, query) in
         var folders = [FolderEntity]()
         
         for folder in result {
@@ -231,16 +180,15 @@ let taskProcessorGroup = TaskProcessorGroup(
                                         volatile: folder.other_interesting_stuff))
         }
         
-        return collect(users: nil, tags: nil,
-                       videos: nil, folders: folders,
-                       subregions: nil,
-                       folderItmes: nil, videosTags: nil,
-                       userCurrentVisibleVideoCount: nil,
-                       taskID: taskID, query: query,
-                       metadata: metadata, report: .done)
+        return (.init(users: nil, tags: nil,
+                      videos: nil, folders: folders,
+                      subregions: nil),
+                .init(folderItmes: nil, videosTags: nil,
+                      userCurrentVisibleVideoCount: nil),
+                .done)
 },
     // 标签页
-    processTagDetail: { (_, result, query, taskID, metadata) in
+    extractEntitiesFromTagDetailResult: { (result, query) in
         var videos = [VideoEntity]()
         var users = [UserEntity]()
         var tags = [TagEntity]()
@@ -268,17 +216,15 @@ let taskProcessorGroup = TaskProcessorGroup(
             tags.append(TagEntity(tid: tag.tid, name: tag.name, type: nil, cover_url: nil, head_cover_url: nil, description: nil, short_description: nil, c_time: nil, volatile: nil))
         }
         
-        return collect(users: users, tags: tags,
-                       videos: videos, folders: nil,
-                       subregions: subregions,
-                       folderItmes: nil, videosTags: videosTags,
-                       userCurrentVisibleVideoCount: nil,
-                       taskID: taskID, query: query,
-                       metadata: metadata,
-                       report: result.videos.count == 0 ? .done : .shouldTurnPage)
+        return (.init(users: users, tags: tags,
+                      videos: videos, folders: nil,
+                      subregions: subregions),
+                .init(folderItmes: nil, videosTags: videosTags,
+                      userCurrentVisibleVideoCount: nil),
+                result.videos.count == 0 ? .done : .shouldTurnPage)
 },
     // 标签页中的默认排序
-    processTagTop: { (_, result, query, taskID, metadata) in
+    extractEntitiesFromTagTopResult: { (result, query) in
         var videos = [VideoEntity]()
         var users = [UserEntity]()
         var videosTags = [(UInt64, [VideoTag])]()
@@ -295,16 +241,15 @@ let taskProcessorGroup = TaskProcessorGroup(
             videosTags.append((video.aid, [VideoTag(tid: query.tid, info: nil)]))
         }
         
-        return collect(users: users, tags: nil,
-                       videos: videos, folders: nil,
-                       subregions: subregions,
-                       folderItmes: nil, videosTags: videosTags,
-                       userCurrentVisibleVideoCount: nil,
-                       taskID: taskID, query: query,
-                       metadata: metadata,
-                       report: (result.count == 0 || query.pageNumber == 2) ? .done : .shouldTurnPage)
+        return (.init(users: users, tags: nil,
+                      videos: videos, folders: nil,
+                      subregions: subregions),
+                .init(folderItmes: nil, videosTags: videosTags,
+                      userCurrentVisibleVideoCount: nil),
+                (result.count == 0 || query.pageNumber == 2) ?
+                    .done : .shouldTurnPage)
 },
-    processUserFavoriteFolder: { (_, result, query, taskID, metadata) in
+    extractEntitiesFromUserFavoriteFolderResult: { (result, query) in
         var videos = [VideoEntity]()
         var users = [UserEntity]()
         var folderItems = [FolderVideo]()
@@ -320,14 +265,13 @@ let taskProcessorGroup = TaskProcessorGroup(
             folderItems.append(FolderVideo(aid: video.aid, favorite_time: video.favorite_time))
         }
         
-        return collect(users: users, tags: nil,
-                       videos: videos, folders: nil,
-                       subregions: subregions,
-                       folderItmes: (uid: query.uid, fid: query.fid, items: folderItems),
-                       videosTags: nil,
-                       userCurrentVisibleVideoCount: nil,
-                       taskID: taskID, query: query,
-                       metadata: metadata,
-                       report: result.archives.count == 0 ? .done : .shouldTurnPage)
+        return (.init(users: users, tags: nil,
+                      videos: videos, folders: nil,
+                      subregions: subregions),
+                .init(folderItmes: (uid: query.uid, fid: query.fid,
+                                    items: folderItems),
+                      videosTags: nil,
+                      userCurrentVisibleVideoCount: nil),
+                result.archives.count == 0 ? .done : .shouldTurnPage)
 }
 )

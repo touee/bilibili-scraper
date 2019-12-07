@@ -2,6 +2,7 @@ import Foundation
 import SwiftTask
 import BilibiliAPI
 import SwiftyJSON
+import BilibiliEntityDB
 
 public enum TaskType: Int {
     case search = 101
@@ -89,24 +90,6 @@ public enum TaskType: Int {
     }
 }
 
-let taskPipeline = SwiftTask.buildPipeline(forInputType: APIQuery.self)
-    | callAPI
-    |+ WithData { _, owned in { resp in
-        _ = rawDataLogger.log(label: owned["label"] as! String,
-                              query: owned["$input"] as! APIQuery,
-                              rawResponse: resp,
-                              taskID: owned["taskID"] as! Int64)
-        return resp } }
-    |+ checkAPIError
-    |+ WithData { _, owned in { resp in
-        try (owned["$input"] as! APIQuery).type
-            .extractResult(response: resp) } }
-    |+ WithData { _, owned in {
-        try (owned["$input"] as! APIQuery)
-            .processResult(result: $0,
-                           taskID: owned["taskID"] as! Int64,
-                           metadata: owned["metadata"] as! JSON?) } }
-
 extension APIQuery {
     var type: TaskType {
         return TaskType(from: Self.self)
@@ -119,41 +102,42 @@ extension APIQuery {
                        pipeline: taskPipeline)
     }
     
-    func processResult(result: APIResult, taskID: Int64, metadata: JSON?) throws -> TaskReport {
+    func extractEntitesFromResult(result: APIResult) throws
+        -> (EntityCollection, EntityExtra, TaskReport) {
         switch self {
         case let query as SearchResult.Query:
-            return try taskProcessorGroup.processSearch(
-                query.type.label, result as! SearchResult.Result,
-                query, taskID, metadata)
+            return try taskResultEntityExtractorGroup
+                .extractEntitiesFromSearchResult(
+                    result as! SearchResult.Result, query)
         case let query as VideoRelatedVideosResult.Query:
-            return try taskProcessorGroup.processVideoRelatedVideos(
-                query.type.label, result as! VideoRelatedVideosResult.Result,
-                query, taskID, metadata)
+            return try taskResultEntityExtractorGroup
+                .extractEntitiesFromVideoRelatedVideosResult(
+                    result as! VideoRelatedVideosResult.Result, query)
         case let query as VideoTagsResult.Query:
-            return try taskProcessorGroup.processVideoTags(
-                query.type.label, result as! VideoTagsResult.Result,
-                query, taskID, metadata)
+            return try taskResultEntityExtractorGroup
+                .extractEntitiesFromVideoTagsResult(
+                    result as! VideoTagsResult.Result, query)
 //        case let query as UserSubmissionsResult.Query:
         case let query as UserSubmissionSearchResult.Query:
-            return try taskProcessorGroup.processUserSubmissions(
-                query.type.label, result as! UserSubmissionSearchResult.Result,
-                query, taskID, metadata)
+            return try taskResultEntityExtractorGroup
+                .extractEntitiesFromUserSubmissionsResult(
+                    result as! UserSubmissionSearchResult.Result, query)
         case let query as UserFavoriteFolderListResult.Query:
-            return try taskProcessorGroup.processUserFavoriteFolderList(
-                query.type.label, result as! UserFavoriteFolderListResult.Result,
-                query, taskID, metadata)
+            return try taskResultEntityExtractorGroup
+                .extractEntitiesFromUserFavoriteFolderListResult(
+                    result as! UserFavoriteFolderListResult.Result, query)
         case let query as TagDetailResult.Query:
-            return try taskProcessorGroup.processTagDetail(
-                query.type.label, result as! TagDetailResult.Result,
-                query, taskID, metadata)
+            return try taskResultEntityExtractorGroup
+                .extractEntitiesFromTagDetailResult(
+                    result as! TagDetailResult.Result, query)
         case let query as TagTopResult.Query:
-            return try taskProcessorGroup.processTagTop(
-                query.type.label, result as! TagTopResult.Result,
-                query, taskID, metadata)
+            return try taskResultEntityExtractorGroup
+                .extractEntitiesFromTagTopResult(
+                    result as! TagTopResult.Result, query)
         case let query as FavoriteFolderVideosResult.Query:
-            return try taskProcessorGroup.processUserFavoriteFolder(
-                query.type.label, result as! FavoriteFolderVideosResult.Result,
-                query, taskID, metadata)
+            return try taskResultEntityExtractorGroup
+                .extractEntitiesFromUserFavoriteFolderResult(
+                    result as! FavoriteFolderVideosResult.Result, query)
         default: fatalError()
         }
     }

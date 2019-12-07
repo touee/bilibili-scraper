@@ -1,6 +1,34 @@
 import Foundation
 import SQLite
 
+public class EntityCollection {
+    public var users: [UserEntity]?
+    public var tags: [TagEntity]?
+    public var videos: [VideoEntity]?
+    public var folders: [FolderEntity]?
+    public var subregions: [SubregionEntity]?
+    
+    public init(users: [UserEntity]?, tags: [TagEntity]?, videos: [VideoEntity]?,folders: [FolderEntity]?, subregions: [SubregionEntity]?) {
+        self.users = users
+        self.tags = tags
+        self.videos = videos
+        self.folders = folders
+        self.subregions = subregions
+    }
+}
+
+public class EntityExtra {
+    public var folderItmes: (uid: UInt64, fid: UInt64, items: [FolderVideo])?
+    public var videosTags: [(aid: UInt64, tags: [VideoTag])]?
+    public var userCurrentVisibleVideoCount: (UInt64, Int)?
+    
+    public init(folderItmes: (uid: UInt64, fid: UInt64, items: [FolderVideo])?, videosTags: [(aid: UInt64, tags: [VideoTag])]?, userCurrentVisibleVideoCount: (UInt64, Int)?) {
+        self.folderItmes = folderItmes
+        self.videosTags = videosTags
+        self.userCurrentVisibleVideoCount = userCurrentVisibleVideoCount
+    }
+}
+
 final public class EntityDB {
     public let connection: Connection
     
@@ -16,38 +44,33 @@ final public class EntityDB {
         self.connection.busyHandler({ (_) in true })
     }
     
-    public func update(users: inout [UserEntity]?, tags: inout [TagEntity]?,
-                       subregions: inout [SubregionEntity]?,
-                       videos: inout [VideoEntity]?, folders: inout [FolderEntity]?,
-                       folderItmes: (uid: UInt64, fid: UInt64, items: [FolderVideo])?,
-                       videosTags: [(aid: UInt64, tags: [VideoTag])]?,
-                       userCurrentVisibleVideoCount: (UInt64, Int)?) {
+    public func update(_ c: EntityCollection, _ e: EntityExtra) {
         try! connection.transaction {
-            if var users = users {
+            if let users = c.users {
                 for i in 0..<users.count {
-                    self.userTable.update(user: &users[i])
+                    self.userTable.update(user: &c.users![i])
                 }
             }
-            if let countInfo = userCurrentVisibleVideoCount {
+            if let countInfo = e.userCurrentVisibleVideoCount {
                 self.userTable.updateCurrentVisibleVideoCount(uid: countInfo.0,
                                                               count: countInfo.1)
             }
-            if var tags = tags {
+            if let tags = c.tags {
                 for i in 0..<tags.count {
-                    self.tagTable.update(tag: &tags[i])
+                    self.tagTable.update(tag: &c.tags![i])
                 }
             }
-            if var subregions = subregions {
+            if let subregions = c.subregions {
                 for i in 0..<subregions.count {
-                    self.subregionTable.update(subregion: &subregions[i])
+                    self.subregionTable.update(subregion: &c.subregions![i])
                 }
             }
-            if var videos = videos {
+            if let videos = c.videos {
                 for i in 0..<videos.count {
-                    self.videoTable.update(video: &videos[i])
+                    self.videoTable.update(video: &c.videos![i])
                 }
             }
-            if let videosTags = videosTags {
+            if let videosTags = e.videosTags {
                 for videoTags in videosTags {
                     let isCompleteList = (videoTags.tags.count == 0
                         || videoTags.tags[0].info != nil)
@@ -62,33 +85,18 @@ final public class EntityDB {
                     }
                 }
             }
-            if var folders = folders {
+            if let folders = c.folders {
                 for i in 0..<folders.count {
-                    self.folderTable.update(folder: &folders[i])
+                    self.folderTable.update(folder: &c.folders![i])
                     self.userTable.updateHidesFolders(uid: folders[i].owner_uid, value: false)
                 }
             }
-            if let folderItmes = folderItmes {
+            if let folderItmes = e.folderItmes {
                 self.folderTable.insertFolderVideoItems(
                     uid: folderItmes.uid, fid: folderItmes.fid,
                     items: folderItmes.items)
             }
         }
-    }
-    
-    // update but don't care about updated result
-    public func update(users: [UserEntity]?, tags: [TagEntity]?,
-    subregions: [SubregionEntity]?,
-    videos: [VideoEntity]?, folders: [FolderEntity]?,
-    folderItmes: (uid: UInt64, fid: UInt64, items: [FolderVideo])?,
-    videosTags: [(aid: UInt64, tags: [VideoTag])]?,
-    userCurrentVisibleVideoCount: (UInt64, Int)?) {
-        var users = users
-        var tags = tags
-        var subregions = subregions
-        var videos = videos
-        var folders = folders
-        self.update(users: &users, tags: &tags, subregions: &subregions, videos: &videos, folders: &folders, folderItmes: folderItmes, videosTags: videosTags, userCurrentVisibleVideoCount: userCurrentVisibleVideoCount)
     }
     
     public func updateUserHidesFolders(uid: UInt64, value: Bool) {
