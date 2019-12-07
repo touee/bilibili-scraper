@@ -22,8 +22,8 @@ class SubregionTable: EntityDBTable {
     ]
     
     lazy var upsertStatement =  try!  buildUpsertStatement(db: self.connection, table: SubregionTable.name, columns: [
-        UpsertColumnRule(name: "subregion_id",  upsertMode: .decreaseIfOldIsNull),
-        UpsertColumnRule(name: "name",          upsertMode: .replace),
+        UpsertColumnRule(name: "subregion_id",  upsertMode: .coalesceFromNew),
+        UpsertColumnRule(name: "name",          upsertMode: .coalesceFromNew),
         ], matchers: SubregionTable.primaryKeyColumnNames)
     lazy var selectStatement = try! self.buildSelectStatement(matchers: SubregionTable.primaryKeyColumnNames)
     init(db: EntityDB) {
