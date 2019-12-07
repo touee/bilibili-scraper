@@ -20,7 +20,7 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.0.0"),
         .package(url: "https://github.com/swift-server/async-http-client.git", from: "1.0.0"),
         
-        .package(url: "https://github.com/touee/SwiftTask.git", from: "0.0.12"),
+        .package(url: "https://github.com/touee/SwiftTask.git", from: "0.0.13"),
         
         .package(url: "https://github.com/stephencelis/SQLite.swift.git", from: "0.12.0"),
         .package(url: "https://github.com/IBM-Swift/HeliumLogger.git", from: "1.9.0"),
@@ -28,7 +28,7 @@ let package = Package(
         .package(url: "https://github.com/dduan/TOMLDecoder.git", from: "0.1.5"),
         //.package(url: "https://github.com/vapor/postgres-kit", .branch("master")),
         
-        .package(url: "https://github.com/touee/BilibiliAPI.git", from: "0.1.5"),
+        .package(url: "https://github.com/touee/BilibiliAPI.git", from: "0.1.7"),
     ],
     targets: [
         // Targets are the basic building blocks of a package. A target can define a module or a test suite.
