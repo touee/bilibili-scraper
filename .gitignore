@@ -2,6 +2,7 @@
 /.build
 /Packages
 /*.xcodeproj
+.swiftpm/
 
 __pycache__
 
