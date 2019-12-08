@@ -4,6 +4,14 @@ import BilibiliAPI
 import SwiftyJSON
 import BilibiliEntityDB
 
+public enum TaskSubject {
+    case none
+    case video
+    case user
+    case tag
+    case folder
+}
+
 public enum TaskType: Int {
     case search = 101
     
@@ -17,6 +25,20 @@ public enum TaskType: Int {
     case tag_top = 402
     
     case folder_favoriteFolder = 501
+    
+    var subject: TaskSubject {
+        switch self {
+        case .search: return .none
+        case .video_relatedVideos, .video_tags:
+            return .video
+        case .user_submissions, .user_favoriteFolderList:
+            return .user
+        case .tag_detail, .tag_top:
+            return .tag
+        case .folder_favoriteFolder:
+            return .folder
+        }
+    }
     
     var label: String {
         switch self {

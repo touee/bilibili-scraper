@@ -16,6 +16,25 @@ import BilibiliAPI
 //checkCTime()
 //exit(0)
 
+let strategyGroup = { () -> StrategyGroup in
+    enum Strategy {
+        case demo
+    }
+    let strategy = Strategy.demo
+    
+    switch strategy {
+    case .demo:
+        return StrategyGroup(
+            onVideoRelatedVideos: .allUncertain(priority: 0),
+            onVideoTags: .allUncertain(priority: 0),
+            onUserSubmissions: .allUncertain(priority: 0),
+            onUserFolderList: .allUncertain(priority: 0),
+            onTagDetail: .allUncertain(priority: 0),
+            onTagTop: .allUncertain(priority: 0),
+            onFolderVideoList: .allUncertain(priority: 0))
+    }
+}()
+
 let scheduler = TaskQueue()
 
 scheduler.resultHandler = { label, query, taskID, metadata, report in
