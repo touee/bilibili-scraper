@@ -78,22 +78,26 @@ scheduler.errorHandler = { label, query, taskID, metadata, error in
     return report
 }
 
-let startTags = { () -> [UInt64] in
-    try! entityDB.connection.prepare(#"SELECT * FROM certified_tag"#)
-        .map { UInt64($0[0] as! Int64) }
-}()
-var tasks = [EnqueuedTask]()
-for tid in startTags  {
-    tasks.append(EnqueuedTask(
-        TagDetailQuery(tid: tid).buildTask(),
-        priority: 1, referrer: .root))
-    tasks.append(EnqueuedTask(
-        TagTopQuery(tid: tid).buildTask(),
-        priority: 1, referrer: .root))
+func main() {
+    let startTags = { () -> [UInt64] in
+        try! entityDB.connection.prepare(#"SELECT * FROM certified_tag"#)
+            .map { UInt64($0[0] as! Int64) }
+    }()
+    var tasks = [EnqueuedTask]()
+    for tid in startTags  {
+        tasks.append(EnqueuedTask(
+            TagDetailQuery(tid: tid).buildTask(),
+            priority: 1, referrer: .root))
+        tasks.append(EnqueuedTask(
+            TagTopQuery(tid: tid).buildTask(),
+            priority: 1, referrer: .root))
+    }
+    scheduler.addTask(tasks)
+
+    //scheduler.resume()
+    scheduler.wait()
+
+    //SearchTask(SearchQuery(keyword: "xxx"))
 }
-scheduler.addTask(tasks)
 
-//scheduler.resume()
-scheduler.wait()
-
-//SearchTask(SearchQuery(keyword: "xxx"))
+main()
