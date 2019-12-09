@@ -4,13 +4,16 @@
 
 ## ★★★★★
 
-### 将EntityDB迁移至PostgreSQL
-
-### 可配置的采集策略
+### 实现 ReportCenter
 
 ## ★★★★
 
+### 将EntityDB迁移至PostgreSQL
 ### CLI 选项
+
+## ★★★
+
+### Entity 使用 class 而非 struct?
 
 ## ★
 

@@ -25,7 +25,7 @@ struct StrategyGroup {
             case .uncertain(let priority):
                 return priority
             case .freeze:
-                fatalError()
+                return 0
             }
         }
     }

@@ -35,7 +35,6 @@ func evaluateTag(tag tid: UInt64) -> Bool {
         return true
     }
     do { // ¯\_(ツ)_/¯
-        // ~~TODO: 合并 TagTop 和 TagDetail, 负进度为 TagTop, 正进度为 TagDetail~~
         let sample = assistantDB.getSampleVideos(for: tid)
         if sample.count == 0 {
             return false
@@ -121,127 +120,313 @@ struct JudgedCollection {
     var folders: [(uid: UInt64, fid: UInt64)] // folder
 }
 
-func _judge(_ newFounds: EntityCollection, source query: APIQuery, report: TaskReport)
-    -> (passed: JudgedCollection, undecided: JudgedCollection, report: TaskReport) {
-        var report = report
-        var passedVideos = [UInt64]()
-        var undecidedVideos = [UInt64]()
-        var passedUsers = [UInt64]()
-        var passedTags = [UInt64]()
-        var passedFolders = [(uid: UInt64, fid: UInt64)]()
-        
-        
-        if newFounds.videos != nil { // videos
-            try! entityDB.connection.transaction {
-                for video in newFounds.videos! {
-                    switch query {
-                    // 如果视频来源于其他视频的相关视频, 会根据那些其他视频中是否有认证的视频来决定是否冻结
-                    case is VideoRelatedVideosQuery:
-                        let reverseRelatedVideos = assistantDB.getReversedVideoRelatedVideosReferrers(for: video.aid)
-                        if (getCertifiedVideoCount(among: reverseRelatedVideos) ?? 0) > 0 {
-                            passedVideos.append(video.aid)
-                        } else {
-                            undecidedVideos.append(video.aid)
-                        }
-                    // 如果视频来源于标签页, 会根据该标签是否认证来决定是否冻结
-                    case let query as APIQueryWithTID:
-                        if certifiedTags.contains(query.tid) {
-                            passedVideos.append(video.aid)
-                        } else {
-                            undecidedVideos.append(video.aid)
-                        }
-                        // 如果视频来源于投稿页, 会冻结
-                    // TODO: 考虑 up 主倾向?
-                    case is UserSubmissionsQuery,
-                         is UserSubmissionSearchQuery:
-                        undecidedVideos.append(video.aid)
-                    // 如果视频来源于收藏夹, 会根据其收藏夹的评判来决定是否冻结
-                    case let query as FavoriteFolderVideosQuery:
-                        if evaluateFolder(folder: query.fid, ofUser: query.uid) {
-                            passedVideos.append(video.aid)
-                        } else {
-                            undecidedVideos.append(video.aid)
-                        }
-                        
-                    default: fatalError()
-                    }
+func judge(_ newFounds: EntityCollection,
+             taskID: Int64, source query: APIQuery, metadata: JSON?,
+             report: TaskReport) -> ([EnqueuedTask], TaskReport) {
+    var report = report
+    
+    var newTasks = [EnqueuedTask]()
+    
+    let uncertainUsers: [UInt64]?
+    let userSubmissionsUncertainPriority: Double?
+    let userFolderListUncertainPriority: Double?
+    let uncertainTags: [UInt64]?
+    let tagDetailUncertainPriority: Double?
+    let tagTopUncertainPriority: Double?
+    let uncertainVideos: [UInt64]?
+    let videoRelatedVideosUncertainPriority: Double?
+    let videoTagsUncertainPriority: Double?
+    let uncertainFolders: [(uid: UInt64, fid: UInt64)]?
+    let folderVideosUncertainPriority: Double?
+    
+    // user
+    if let users = newFounds.users {
+        let submissionsDecision = strategyGroup.makeDecision(for: .user_submissions, on: query.type)
+        let folderListDecision = strategyGroup.makeDecision(for: .user_favoriteFolderList, on: query.type)
+        if submissionsDecision.isUncertain || folderListDecision.isUncertain {
+            uncertainUsers = users.map { $0.uid }
+            if submissionsDecision.isUncertain {
+                userSubmissionsUncertainPriority = submissionsDecision.priority
+            } else {
+                newTasks += users.map {
+                    $0.buildSubmissionsQuery().buildTask().buildEnqueuedTask(
+                        shouldFreeze: submissionsDecision.shouldFreeze,
+                        priority: submissionsDecision.priority)
                 }
+                userSubmissionsUncertainPriority = nil
             }
-            
-            
-            if newFounds.users != nil { // users
-                // 直接通过
-                // TODO: 对于稿件任务, 只通过曾上传过相关视频的用户
-                passedUsers = newFounds.users!.map { $0.uid }
+            if folderListDecision.isUncertain {
+                userFolderListUncertainPriority = folderListDecision.priority
+            } else {
+                newTasks += users.map {
+                    $0.buildFavoriteFolderListQuery().buildTask().buildEnqueuedTask(
+                        shouldFreeze: folderListDecision.shouldFreeze,
+                        priority: folderListDecision.priority)
+                }
+                userFolderListUncertainPriority = nil
             }
-            
-            if newFounds.tags != nil { // tags
-                // 第一页标签直接通过, 之后每页都会进行评估
-                passedTags = newFounds.tags!.map { $0.tid }
+        } else {
+            newTasks += users.flatMap {
+                [
+                    $0.buildSubmissionsQuery().buildTask().buildEnqueuedTask(
+                        shouldFreeze: submissionsDecision.shouldFreeze,
+                        priority: submissionsDecision.priority),
+                    $0.buildFavoriteFolderListQuery().buildTask().buildEnqueuedTask(
+                        shouldFreeze: folderListDecision.shouldFreeze,
+                        priority: folderListDecision.priority)
+                ]
             }
-            
-            if newFounds.folders != nil { // folders
-                // 第一页标签直接通过, 之后每页都会进行评估
-                passedFolders = newFounds.folders!.map { (uid: $0.owner_uid, fid: $0.fid) }
+            uncertainUsers = nil
+            userSubmissionsUncertainPriority = nil
+            userFolderListUncertainPriority = nil
+        }
+    } else {
+        uncertainUsers = nil
+        userSubmissionsUncertainPriority = nil
+        userFolderListUncertainPriority = nil
+    }
+    
+    // tag
+    if let tags = newFounds.tags {
+        let detailDecision = strategyGroup.makeDecision(for: .tag_detail, on: query.type)
+        let topDecision = strategyGroup.makeDecision(for: .tag_top, on: query.type)
+        if detailDecision.isUncertain || topDecision.isUncertain {
+            uncertainTags = tags.map { $0.tid }
+            if detailDecision.isUncertain {
+                tagDetailUncertainPriority = detailDecision.priority
+            } else {
+                newTasks += tags.map {
+                    $0.buildDetailQuery().buildTask().buildEnqueuedTask(
+                        shouldFreeze: detailDecision.shouldFreeze,
+                        priority: detailDecision.priority)
+                }
+                tagDetailUncertainPriority = nil
             }
-            
-            try! entityDB.connection.transaction {
-                if report == .shouldTurnPage {
-                    switch query {
-                    case is UserSubmissionsQuery,
-                         is UserSubmissionSearchQuery:
-                        break
-                    case let query as APIQueryWithTID:
-                        if !evaluateTag(tag: query.tid) {
-                            report = .shouldFreezeFollowUpProgress
-                        }
-                    case let query as FavoriteFolderVideosQuery:
-                        if !evaluateFolder(folder: query.fid, ofUser: query.uid) {
-                            report = .shouldFreezeFollowUpProgress
-                        }
-                    default: fatalError()
-                    }
+            if topDecision.isUncertain {
+                newTasks += tags.map {
+                    $0.buildTopQuery().buildTask().buildEnqueuedTask(
+                        shouldFreeze: topDecision.shouldFreeze,
+                        priority: topDecision.priority)
+                }
+                tagTopUncertainPriority = topDecision.priority
+            } else {
+                tagTopUncertainPriority = nil
+            }
+        } else {
+            newTasks += tags.flatMap {
+                [
+                    $0.buildDetailQuery().buildTask().buildEnqueuedTask(
+                        shouldFreeze: detailDecision.shouldFreeze,
+                        priority: detailDecision.priority),
+                    $0.buildTopQuery().buildTask().buildEnqueuedTask(
+                        shouldFreeze: topDecision.shouldFreeze,
+                        priority: topDecision.priority)
+                ]
+            }
+            uncertainTags = nil
+            tagDetailUncertainPriority = nil
+            tagTopUncertainPriority = nil
+        }
+    } else {
+        uncertainTags = nil
+        tagDetailUncertainPriority = nil
+        tagTopUncertainPriority = nil
+    }
+    
+    // video
+    if let videos = newFounds.videos {
+        let relatedVideosDecision = strategyGroup.makeDecision(for: .video_relatedVideos, on: query.type)
+        let tagsDecision = strategyGroup.makeDecision(for: .video_tags, on: query.type)
+        if relatedVideosDecision.isUncertain || tagsDecision.isUncertain {
+            uncertainVideos = videos.map { $0.aid }
+            if relatedVideosDecision.isUncertain {
+                videoRelatedVideosUncertainPriority = relatedVideosDecision.priority
+            } else {
+                newTasks += videos.map {
+                    $0.buildRelatedVideosQuery().buildTask().buildEnqueuedTask(
+                        shouldFreeze: relatedVideosDecision.shouldFreeze,
+                        priority: relatedVideosDecision.priority)
+                }
+                videoRelatedVideosUncertainPriority = nil
+            }
+            if tagsDecision.isUncertain {
+                videoTagsUncertainPriority = tagsDecision.priority
+            } else {
+                newTasks += videos.map {
+                    $0.buildTagsQuery().buildTask().buildEnqueuedTask(
+                        shouldFreeze: tagsDecision.shouldFreeze,
+                        priority: tagsDecision.priority)
+                }
+                videoTagsUncertainPriority = nil
+            }
+        } else {
+            newTasks += videos.flatMap {
+                [
+                    $0.buildRelatedVideosQuery().buildTask().buildEnqueuedTask(
+                        shouldFreeze: relatedVideosDecision.shouldFreeze,
+                        priority: relatedVideosDecision.priority),
+                    $0.buildTagsQuery().buildTask().buildEnqueuedTask(
+                        shouldFreeze: tagsDecision.shouldFreeze,
+                        priority: tagsDecision.priority)
+                ]
+            }
+            uncertainVideos = nil
+            videoRelatedVideosUncertainPriority = nil
+            videoTagsUncertainPriority = nil
+        }
+    } else {
+        uncertainVideos = nil
+        videoRelatedVideosUncertainPriority = nil
+        videoTagsUncertainPriority = nil
+    }
+    
+    // folder
+    if let folders = newFounds.folders {
+        let videosDecision = strategyGroup.makeDecision(for: .folder_favoriteFolder, on: query.type)
+        if videosDecision.isUncertain {
+            uncertainFolders = folders.map { (uid: $0.owner_uid, fid: $0.fid) }
+            folderVideosUncertainPriority = videosDecision.priority
+        } else {
+            newTasks += folders.map {
+                $0.buildVideosQuery().buildTask().buildEnqueuedTask(
+                    shouldFreeze: videosDecision.shouldFreeze,
+                    priority: videosDecision.priority)
+            }
+            uncertainFolders = nil
+            folderVideosUncertainPriority = nil
+        }
+    } else {
+        uncertainFolders = nil
+        folderVideosUncertainPriority = nil
+    }
+    
+    // no subregions
+    
+//    let (passed, undecided, report) = _judge(newFounds, source: query, report: report)
+    
+    if uncertainUsers == nil && uncertainTags == nil
+        && uncertainVideos == nil && uncertainFolders == nil
+        && report != .shouldTurnPage {
+        // nothing further need to be done
+        return (newTasks, report)
+    }
+    
+    try! entityDB.connection.transaction {
+        // Note: since we are always in entityDB's transaction,
+        // there is no need to begin assistant's transaction to call `evaluateTag` or `evaluateFolder`
+        
+        if let uncertainUsers = uncertainUsers {
+            // 直接通过
+            // TODO: 对于稿件任务, 只通过曾上传过相关视频的用户
+            uncertainUsers.forEach {
+                var result = [EnqueuedTask]()
+                if let priority = userSubmissionsUncertainPriority {
+                    newTasks += [UserSubmissionsQuery(uid: $0).buildTask().buildEnqueuedTask(
+                        shouldFreeze: false,
+                        priority: priority)]
+                }
+                if let priority = userFolderListUncertainPriority {
+                    newTasks += [UserFavoriteFolderListQuery(uid: $0).buildTask().buildEnqueuedTask(
+                        shouldFreeze: false,
+                        priority: priority)]
                 }
             }
         }
         
-        return (passed: JudgedCollection(users: passedUsers, tags: passedTags,
-                                  videos: passedVideos, folders: passedFolders),
-                undecided: JudgedCollection(users: [], tags: [],
-                                     videos: undecidedVideos, folders: []),
-                report: report)
-}
-
-func judge(_ newFounds: EntityCollection,
-             taskID: Int64, source query: APIQuery, metadata: JSON?,
-             report: TaskReport) -> ([EnqueuedTask], TaskReport) {
-    
-    let (passed, undecided, report) = _judge(newFounds, source: query, report: report)
-    
-    var tasks = [EnqueuedTask]()
-    let judgedVideos = passed.videos.map { ($0, false /*shoudFreeze*/) } + undecided.videos.map { ($0, true) }
-    _ = judgedVideos.map {
-        tasks += [EnqueuedTask(VideoTagsQuery(aid: $0.0).buildTask(), shouldFreeze: false, priority: $0.1 ? 0 : -1, referrer: .ignore)]
-//        tasks += [EnqueuedTask(VideoTagsQuery(aid: $0.0).buildTask(), shouldFreeze: false, priority: 1.2, referrer: .ignore)]
-        tasks += [EnqueuedTask(VideoRelatedVideosQuery(aid: $0.0).buildTask(), shouldFreeze: $0.1, referrer: .ignore)]
-    }
-    let judgedUsers = passed.users.map { ($0, false) } + undecided.users.map { ($0, true) }
-    _ = judgedUsers.map {
-        tasks += [EnqueuedTask(UserFavoriteFolderListQuery(uid: $0.0).buildTask(), shouldFreeze: $0.1, referrer: .ignore)]
-//        tasks += [EnqueuedTask(UserSubmissionsQuery(uid: $0.0).buildTask(), shouldFreeze: $0.1, referrer: .ignore)]
-        tasks += [EnqueuedTask(UserSubmissionsQuery(uid: $0.0).buildTask(), shouldFreeze: true, referrer: .ignore)]
-    }
-    let judgedTags = passed.tags.map { ($0, false) } + undecided.tags.map { ($0, true) }
-    _ = judgedTags.map {
-        tasks += [EnqueuedTask(TagDetailQuery(tid: $0.0).buildTask(), shouldFreeze: $0.1, referrer: .ignore)]
-        tasks += [EnqueuedTask(TagTopQuery(tid: $0.0).buildTask(), shouldFreeze: $0.1, referrer: .ignore)]
-    }
-    let judgedFolders = passed.folders.map { ($0, false) } + undecided.folders.map { ($0, true) }
-    _ = judgedFolders.map {
-//        tasks += [EnqueuedTask(UserFavoriteFolderQuery(uid: $0.0.uid, fid: $0.0.fid).buildTask(), shouldFreeze: $0.1, referrer: .ignore)]
-        tasks += [EnqueuedTask(FavoriteFolderVideosQuery(uid: $0.0.uid, fid: $0.0.fid).buildTask(), shouldFreeze: $0.1, priority: 1.1, referrer: .ignore)]
-    }
+        if let uncertainTags = uncertainTags {
+            // 第一页标签直接通过, 之后每页都会进行评估
+            uncertainTags.forEach {
+                var result = [EnqueuedTask]()
+                if let priority = tagDetailUncertainPriority {
+                    newTasks += [TagDetailQuery(tid: $0).buildTask().buildEnqueuedTask(
+                        shouldFreeze: false,
+                        priority: priority)]
+                }
+                if let priority = tagTopUncertainPriority {
+                    newTasks += [TagTopQuery(tid: $0).buildTask().buildEnqueuedTask(
+                        shouldFreeze: false,
+                        priority: priority)]
+                }
+            }
+        }
         
+        if let uncertainVideos = uncertainVideos {
+            var isTagCertified: Bool! = nil
+            var folderEvaluationResult: Bool! = nil
+            func shouldPassVideo(aid: UInt64, on: APIQuery) -> Bool {
+                switch query {
+                // 如果视频来源于其他视频的相关视频, 会根据那些其他视频中是否有认证的视频来决定是否冻结
+                case is VideoRelatedVideosQuery:
+                    let reverseRelatedVideos = assistantDB.getReversedVideoRelatedVideosReferrers(for: aid)
+                    return (getCertifiedVideoCount(among: reverseRelatedVideos) ?? 0) > 0
+                    
+                // 如果视频来源于标签页, 会根据该标签是否认证来决定是否冻结
+                case let query as APIQueryWithTID:
+                    if isTagCertified == nil {
+                        isTagCertified = certifiedTags.contains(query.tid)
+                    }
+                    return isTagCertified
+                
+                // 如果视频来源于投稿页, 会冻结
+                // TODO: 考虑 up 主倾向?
+                case is UserSubmissionsQuery,
+                     is UserSubmissionSearchQuery:
+                    return true
+                    
+                // 如果视频来源于收藏夹, 会根据其收藏夹的评判来决定是否冻结
+                case let query as FavoriteFolderVideosQuery:
+                    if folderEvaluationResult == nil {
+                        folderEvaluationResult = evaluateFolder(folder: query.fid, ofUser: query.uid)
+                    }
+                    return folderEvaluationResult
+                    
+                default: fatalError()
+                }
+            }
+            uncertainVideos.forEach {
+                let shouldFreeze = !shouldPassVideo(aid: $0, on: query)
+                if let priority = videoRelatedVideosUncertainPriority {
+                    newTasks += [VideoRelatedVideosQuery(aid: $0).buildTask().buildEnqueuedTask(
+                        shouldFreeze: shouldFreeze,
+                        priority: priority)]
+                }
+                if let priority = videoTagsUncertainPriority {
+                    newTasks += [VideoTagsQuery(aid: $0).buildTask().buildEnqueuedTask(
+                        shouldFreeze: shouldFreeze,
+                        priority: priority)]
+                }
+            }
+        }
+        
+        if let uncertainFolders = uncertainFolders {
+            // 第一页标签直接通过, 之后每页都会进行评估
+            if let priority = folderVideosUncertainPriority {
+                newTasks += uncertainFolders.map {
+                    FavoriteFolderVideosQuery(uid: $0.uid, fid: $0.fid).buildTask().buildEnqueuedTask(
+                        shouldFreeze: false,
+                        priority: priority)
+                }
+            }
+        }
+        
+        if report == .shouldTurnPage {
+            switch query {
+            case is UserSubmissionsQuery,
+                 is UserSubmissionSearchQuery:
+                break
+            case let query as APIQueryWithTID:
+                if !evaluateTag(tag: query.tid) {
+                    report = .shouldFreezeFollowUpProgress
+                }
+            case let query as FavoriteFolderVideosQuery:
+                if !evaluateFolder(folder: query.fid, ofUser: query.uid) {
+                    report = .shouldFreezeFollowUpProgress
+                }
+            default: fatalError()
+            }
+        }
+    }
+            
 //    logger.log(.info, msg: #"""
 //
 //        完成 [\#(taskID)]\#(query):
@@ -251,5 +436,41 @@ func judge(_ newFounds: EntityCollection,
 //            当前任务报告: \#(report)
 //        """#, functionName: #function, lineNum: #line, fileName: #file)
     
-    return (tasks, report)
+    return (newTasks, report)
+}
+
+extension UserEntity {
+    func buildSubmissionsQuery() -> UserSubmissionsQuery {
+        UserSubmissionsQuery(uid: self.uid)
+    }
+    func buildFavoriteFolderListQuery() -> UserFavoriteFolderListQuery {
+        UserFavoriteFolderListQuery(uid: self.uid)
+    }
+}
+extension TagEntity {
+    func buildDetailQuery() -> TagDetailQuery {
+        TagDetailQuery(tid: self.tid)
+    }
+    func buildTopQuery() -> TagTopQuery {
+        TagTopQuery(tid: self.tid)
+    }
+}
+extension VideoEntity {
+    func buildRelatedVideosQuery() -> VideoRelatedVideosQuery {
+        VideoRelatedVideosQuery(aid: self.aid)
+    }
+    func buildTagsQuery() -> VideoTagsQuery {
+        VideoTagsQuery(aid: self.aid)
+    }
+}
+extension FolderEntity {
+    func buildVideosQuery() -> FavoriteFolderVideosQuery {
+        FavoriteFolderVideosQuery(uid: self.owner_uid, fid: self.fid)
+    }
+}
+
+extension APITask {
+    func buildEnqueuedTask(shouldFreeze: Bool, priority: Double) -> EnqueuedTask {
+        return EnqueuedTask(self, shouldFreeze: shouldFreeze, priority: priority, referrer: .ignore)
+    }
 }
