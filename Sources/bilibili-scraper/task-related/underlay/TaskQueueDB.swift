@@ -100,23 +100,23 @@ public class TaskQueueDB {
             """#)
         try! db.execute(#"""
             CREATE TABLE IF NOT EXISTS query_for_search (
-                search_referrer_id INTEGER NOT NULL,
+                search_reference_id INTEGER NOT NULL,
                 keyword TEXT NOT NULL,
                 order_id INTEGER NOT NULL,
                 duration_id INTEGER NOT NULL,
                 subregion_id INTEGER NOT NULL,
 
-                PRIMARY KEY (search_referrer_id),
+                PRIMARY KEY (search_reference_id),
                 UNIQUE (keyword, order_id, duration_id, subregion_id)
             )
             """#)
         try! db.execute(#"""
             CREATE TABLE IF NOT EXISTS query_for_folder (
-                folder_referrer_id INTEGER NOT NULL,
+                folder_reference_id INTEGER NOT NULL,
                 owner_uid INTEGER NOT NULL,
                 fid INTEGER NOT NULL,
 
-                PRIMARY KEY (folder_referrer_id),
+                PRIMARY KEY (folder_reference_id),
                 UNIQUE (owner_uid, fid)
             )
             """#)

@@ -60,7 +60,7 @@ with contextlib.closing(sqlite3.connect(common.TASK_DB_PATH)) as conn:
         cur.execute('''
 		WITH folder_passed_test(owner_uid, fid) AS (
 			SELECT query_for_folder.owner_uid, query_for_folder.fid
-			FROM queue LEFT JOIN query_for_folder ON queue.query_id = query_for_folder.folder_referrer_id
+			FROM queue LEFT JOIN query_for_folder ON queue.query_id = query_for_folder.folder_reference_id
 			LEFT JOIN folder_score
                     ON folder_score.owner_uid = query_for_folder.owner_uid
                         AND folder_score.fid = query_for_folder.fid
@@ -73,7 +73,7 @@ with contextlib.closing(sqlite3.connect(common.TASK_DB_PATH)) as conn:
 		UPDATE queue
         SET status = CASE 1
             WHEN progress = 1 THEN 0
-            WHEN (SELECT owner_uid, fid FROM query_for_folder WHERE folder_referrer_id = query_id)  IN folder_passed_test
+            WHEN (SELECT owner_uid, fid FROM query_for_folder WHERE folder_reference_id = query_id)  IN folder_passed_test
             THEN 0
             ELSE -2
             END
