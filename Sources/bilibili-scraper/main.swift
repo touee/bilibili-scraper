@@ -39,19 +39,21 @@ let scheduler = TaskQueue()
 
 scheduler.resultHandler = { label, query, taskID, metadata, report in
 //    print("done: [\(taskID)]\(query)")
+    reportCenter.reportFinish(taskID: taskID)
     return report
 }
 scheduler.errorHandler = { label, query, taskID, metadata, error in
     var report = TaskReport.failed
     let errorContent = "label: \(label), query: \(query), taskID: \(taskID), metadata: \(String(describing: metadata)), error: \(error)"
-    if let _ = error as? ShouldFreezeTaskError {
+    switch error {
+    case is ShouldFreezeTaskError:
         report = .shouldFreezeCurrentProgress
-    } else if let error = error as? BadAPIResponseCodeError {
+    case let error as BadAPIResponseCodeError:
         if error.code == 11208 { // "用户隐藏了他的收藏夹"
             entityDB.updateUserHidesFolders(uid: (query as! UserFavoriteFolderListQuery).uid, value: true)
             report = .done
         }
-    } else if let error = error as? BadResponseStatusCodeError {
+    case let error as BadResponseStatusCodeError:
         if error.response.statusCode == 412 { // "由于触发哔哩哔哩安全风控策略，该次访问请求被拒绝。"
             logger.log(.warning, msg: "Triggered 412 on processing task. "
                 + errorContent,
@@ -62,19 +64,25 @@ scheduler.errorHandler = { label, query, taskID, metadata, error in
                 + errorContent,
                        functionName: #function, lineNum: #line, fileName: #file)
         }
-    } else if error is EmptyBodyError {
+    case is EmptyBodyError:
         if query is TagTopQuery {
             logger.log(.warning, msg: "Empty tag top response. Treated as success. "
                 + errorContent,
                        functionName: #function, lineNum: #line, fileName: #file)
             report = .doneOnLastPage
         }
-    } else {
+    case is HTTPClientError,
+         is NIOSSLError:
+        logger.log(.warning, msg: "Network error. "
+        + errorContent,
+               functionName: #function, lineNum: #line, fileName: #file)
+    default:
         logger.log(.error, msg: "Caught unexpected error on processing task. "
             + errorContent,
             functionName: #function, lineNum: #line, fileName: #file)
         fatalError()
     }
+    reportCenter.reportFinish(taskID: taskID)
     return report
 }
 

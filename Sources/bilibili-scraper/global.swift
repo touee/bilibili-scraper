@@ -85,3 +85,5 @@ let entityDB = try! EntityDB(
     path: workdir + "/entities.sqlite3")
 let assistantDB = try! AssistantDB(
     path: workdir + "/assistant.sqlite3")
+
+let reportCenter = ReportCenter()
