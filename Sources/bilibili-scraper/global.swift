@@ -29,7 +29,7 @@ let logger = { () -> HeliumLogger in
 let PAGINATION_SIZE: UInt64 = 1000
 
 let startLineNumber = { () -> UInt64 in
-    let files = try! FileManager.default.contentsOfDirectory(atPath: workdir)
+    let files = try! FileManager.default.contentsOfDirectory(atPath: rawLogDir)
     let rx = try! NSRegularExpression(pattern: #"^raw_(\d+).log.csv$"#, options: [])
     let _maxNumberInFilename = files
         .compactMap { filename -> String? in
