@@ -471,6 +471,9 @@ extension FolderEntity {
 
 extension APITask {
     func buildEnqueuedTask(shouldFreeze: Bool, priority: Double) -> EnqueuedTask {
-        return EnqueuedTask(self, shouldFreeze: shouldFreeze, priority: priority, referrer: .ignore)
+        return EnqueuedTask(self, initialStatus: shouldFreeze ? .frozen : .pending, priority: priority, referrer: .ignore)
+    }
+    func buildEnqueuedTask(initialStatus: TaskInitialStatus, priority: Double) -> EnqueuedTask {
+        return EnqueuedTask(self, initialStatus: initialStatus, priority: priority, referrer: .ignore)
     }
 }

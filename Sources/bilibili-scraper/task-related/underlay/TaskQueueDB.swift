@@ -39,15 +39,28 @@ enum TaskStatus: Int {
     case done       = -1
     case frozen     = -2
 }
+public enum TaskInitialStatus {
+    case pending
+    case done
+    case frozen
+    
+    var statusInQueue: TaskStatus {
+        switch self {
+        case .pending: return .pending
+        case .done: return .done
+        case .frozen: return .frozen
+        }
+    }
+}
 
 public struct EnqueuedTask {
     var task: APITask
-    var shouldFreeze: Bool
+    var initialStatus: TaskInitialStatus
     var priority: Double
     var referrer: TaskQueueDB.Referrer
-    public init(_ task: APITask, shouldFreeze: Bool = false, priority: Double = 0, referrer: TaskQueueDB.Referrer) {
+    public init(_ task: APITask, initialStatus: TaskInitialStatus = .pending, priority: Double = 0, referrer: TaskQueueDB.Referrer) {
         self.task = task
-        self.shouldFreeze = shouldFreeze
+        self.initialStatus = initialStatus
         self.priority = priority
         self.referrer = referrer
     }
@@ -175,7 +188,7 @@ public class TaskQueueDB {
         WHERE task_id = ?
         """#)
     
-    private func _enqueue(task: APITask, shouldFreeze: Bool = false, priority: Double = 0, referrer: Referrer) throws {
+    private func _enqueue(task: APITask, initialStatus: TaskInitialStatus = .pending, priority: Double = 0, referrer: Referrer) throws {
         
         let type = task.query.type
         
@@ -229,33 +242,39 @@ public class TaskQueueDB {
             referrerInQueue = (taskID: 0, timestamp: Int64(Date().timeIntervalSince1970))
         }
         
-        do {
-            if let oldSameTaskInQueue = oldSameTaskInQueue {
-                try self.updateTaskStatement.bind(
-                    // priority
-                    max(oldSameTaskInQueue.priority, priority),
-                    // status
-                    (oldSameTaskInQueue.status == .frozen
-                        ? (shouldFreeze ? TaskStatus.frozen : TaskStatus.pending)
-                        : oldSameTaskInQueue.status).rawValue,
-                    // metadata
-                    try mergeMetadata(for: type,
-                                  old: oldSameTaskInQueue.metadata,
-                                  new: task.metadata)?.rawString(),
-                    // referrers
-                    String(data: try JSONEncoder()
-                        .encode((oldSameTaskInQueue.referrers + [referrerInQueue].compactMap { $0 })
-                            .map { [$0.taskID, $0.timestamp] }), encoding: .utf8)!,
-                    oldSameTaskInQueue.taskID!
-                ).run()
-                return
+        if let oldSameTaskInQueue = oldSameTaskInQueue {
+            
+            let newStatus: TaskStatus
+            if oldSameTaskInQueue.status != .running
+                && (initialStatus == .done
+                    || oldSameTaskInQueue.status == .frozen) {
+                newStatus = initialStatus.statusInQueue
+            } else {
+                newStatus = oldSameTaskInQueue.status
             }
+            
+            try self.updateTaskStatement.bind(
+                // priority
+                max(oldSameTaskInQueue.priority, priority),
+                // status
+                newStatus.rawValue,
+                // metadata
+                try mergeMetadata(for: type,
+                              old: oldSameTaskInQueue.metadata,
+                              new: task.metadata)?.rawString(),
+                // referrers
+                String(data: try JSONEncoder()
+                    .encode((oldSameTaskInQueue.referrers + [referrerInQueue].compactMap { $0 })
+                        .map { [$0.taskID, $0.timestamp] }), encoding: .utf8)!,
+                oldSameTaskInQueue.taskID!
+            ).run()
+            return
         }
         
         var newTaskInQueue = TaskInQueue(
             fromNewTask: task,
             priority: priority,
-            shouldFreeze: shouldFreeze,
+            status: initialStatus,
             metadata: task.metadata,
             referrers: [referrerInQueue].compactMap { $0 }
         )
@@ -284,7 +303,7 @@ public class TaskQueueDB {
             for task in tasks {
                 try self._enqueue(
                     task: task.task,
-                    shouldFreeze: task.shouldFreeze,
+                    initialStatus: task.initialStatus,
                     priority: task.priority,
                     referrer: task.referrer)
             }

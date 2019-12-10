@@ -3,15 +3,11 @@ import BilibiliAPI
 import BilibiliEntityDB
 
 extension Array where Element == EnqueuedTask {
-    enum TaskStatus {
-        case frozen
-        case pass
-    }
-    func getCount(of type: TaskType, with status: TaskStatus?) -> Int {
+    func getCount(of type: TaskType, with status: TaskInitialStatus?) -> Int {
         self.filter {
             if let status = status {
                 return $0.task.input.type == type &&
-                $0.shouldFreeze == (status == .frozen)
+                $0.initialStatus == status
             }
             return $0.task.input.type == type
         }.count
@@ -53,31 +49,31 @@ class ReportCenter {
             if let users = self.founds.users {
                 result += """
                     [users]: \(users.count) found, \(self.newFounds.users!.count) newly found
-                        new [Submissions] tasks: \(self.newTasks.getCount(of: .user_submissions, with: .pass)) pass, \(self.newTasks.getCount(of: .user_submissions, with: .frozen)) frozen
-                        new [FolderList] tasks: \(self.newTasks.getCount(of: .folder_favoriteFolder, with: .pass)) pass, \(self.newTasks.getCount(of: .folder_favoriteFolder, with: .frozen)) frozen
+                        new [Submissions] tasks: \(self.newTasks.getCount(of: .user_submissions, with: .pending)) pass, \(self.newTasks.getCount(of: .user_submissions, with: .frozen)) frozen
+                        new [FolderList] tasks: \(self.newTasks.getCount(of: .folder_favoriteFolder, with: .pending)) pass, \(self.newTasks.getCount(of: .folder_favoriteFolder, with: .frozen)) frozen
                     """
             }
             if let tags = self.founds.tags {
                 if !result.isEmpty { result += "\n" }
                 result += """
                     [tags]: \(tags.count) found, \(self.newFounds.tags!.count) newly found
-                        new [Detail] tasks: \(self.newTasks.getCount(of: .tag_detail, with: .pass)) pass, \(self.newTasks.getCount(of: .tag_detail, with: .frozen)) frozen
-                        new [Top] tasks: \(self.newTasks.getCount(of: .tag_top, with: .pass)) pass, \(self.newTasks.getCount(of: .tag_top, with: .frozen)) frozen
+                        new [Detail] tasks: \(self.newTasks.getCount(of: .tag_detail, with: .pending)) pass, \(self.newTasks.getCount(of: .tag_detail, with: .frozen)) frozen
+                        new [Top] tasks: \(self.newTasks.getCount(of: .tag_top, with: .pending)) pass, \(self.newTasks.getCount(of: .tag_top, with: .frozen)) frozen
                     """
             }
             if let videos = self.founds.videos {
                 if !result.isEmpty { result += "\n" }
                 result += """
                     [video]: \(videos.count) found, \(self.newFounds.videos!.count) newly found
-                        new [RelatedVideos] tasks: \(self.newTasks.getCount(of: .video_relatedVideos, with: .pass)) pass, \(self.newTasks.getCount(of: .video_relatedVideos, with: .frozen)) frozen
-                        new [Tags] tasks: \(self.newTasks.getCount(of: .video_tags, with: .pass)) pass, \(self.newTasks.getCount(of: .video_tags, with: .frozen)) frozen
+                        new [RelatedVideos] tasks: \(self.newTasks.getCount(of: .video_relatedVideos, with: .pending)) pass, \(self.newTasks.getCount(of: .video_relatedVideos, with: .frozen)) frozen
+                        new [Tags] tasks: \(self.newTasks.getCount(of: .video_tags, with: .pending)) pass, \(self.newTasks.getCount(of: .video_tags, with: .frozen)) frozen
                     """
             }
             if let folders = self.founds.folders {
                 if !result.isEmpty { result += "\n" }
                 result += """
                     [folders]: \(folders.count) found, \(self.newFounds.folders!.count) newly found
-                        new [Videos] tasks: \(self.newTasks.getCount(of: .folder_favoriteFolder, with: .pass)) pass, frozen \(self.newTasks.getCount(of: .folder_favoriteFolder, with: .frozen))
+                        new [Videos] tasks: \(self.newTasks.getCount(of: .folder_favoriteFolder, with: .pending)) pass, frozen \(self.newTasks.getCount(of: .folder_favoriteFolder, with: .frozen))
                     """
             }
             return result

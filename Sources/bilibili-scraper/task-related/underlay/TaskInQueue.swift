@@ -59,16 +59,12 @@ public struct TaskInQueue {
     let metadata: JSON?
     let referrers: [(taskID: Int64, timestamp: Int64)]
     
-    init(taskID: Int64? = nil, fromNewTask task: APITask, priority: Double = 0, shouldFreeze: Bool = false, metadata: JSON? = nil, referrers: [(taskID: Int64, timestamp: Int64)]) {
+    init(taskID: Int64? = nil, fromNewTask task: APITask, priority: Double = 0, status: TaskInitialStatus = .pending, metadata: JSON? = nil, referrers: [(taskID: Int64, timestamp: Int64)]) {
         self.taskID = taskID
         self.type = task.query.type
         self.query = TaskQueryInQueue(from: task.query)
         self.priority = priority
-        if shouldFreeze {
-            self.status = .frozen
-        } else {
-            self.status = .pending
-        }
+        self.status = status.statusInQueue
         self.attempts = 0
         if let query = task.query as? MultipageAPIQuery {
             self.progress = query.pageNumber ?? 1
