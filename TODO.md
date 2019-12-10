@@ -4,8 +4,6 @@
 
 ## ★★★★★
 
-### 实现 ReportCenter
-
 ## ★★★★
 
 ### 将EntityDB迁移至PostgreSQL
@@ -14,6 +12,8 @@
 ## ★★★
 
 ### Entity 使用 class 而非 struct?
+
+### https://github.com/jhao104/proxy_pool
 
 ## ★
 
