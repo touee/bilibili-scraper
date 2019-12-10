@@ -29,8 +29,8 @@ public struct VideoStats: Codable {
 public struct VideoEntity {
     // 第一遍
     public var aid: UInt64
-    public var title: String
-    public var uploader_uid: UInt64
+    public var title: String?
+    public var uploader_uid: UInt64?
     public var ownership: Int?
     public var description: String?
     public var publish_time: Int64?
@@ -44,7 +44,7 @@ public struct VideoEntity {
     public var stats: VideoStats?
     public var volatile: String?
     
-    public init(aid: UInt64, title: String, uploader_uid: UInt64, ownership: Int?, description: String?, publish_time: Int64?, c_time: Int64?, subregion_id: Int?, parts: Int?, cover_url: String?, duration: Int?, cid: UInt64?, state: Int?, stats: VideoStats?, volatile: String?) {
+    public init(aid: UInt64, title: String?, uploader_uid: UInt64?, ownership: Int?, description: String?, publish_time: Int64?, c_time: Int64?, subregion_id: Int?, parts: Int?, cover_url: String?, duration: Int?, cid: UInt64?, state: Int?, stats: VideoStats?, volatile: String?) {
         self.aid = aid; self.title = title; self.uploader_uid = uploader_uid; self.ownership = ownership; self.description = description; self.publish_time = publish_time; self.c_time = c_time; self.subregion_id = subregion_id; self.parts = parts; self.cover_url = cover_url; self.duration = duration; self.cid = cid; self.state = state; self.stats = stats; self.volatile = volatile?.trimmingCharacters(in: ["\n"])
     }
     
@@ -56,13 +56,14 @@ class VideoTable: EntityDBTable {
     
     static let columns = [
         Column(name: "aid",                     type: .integer, isPrimaryKey: true),
-        Column(name: "title",                   type: .text),
-        Column(name: "uploader_uid",            type: .integer, references: (table: "user", column: "uid")),
+        Column(name: "title",                   type: .text,    isNullable: true),
+        Column(name: "uploader_uid",            type: .integer, isNullable: true,
+               references: (table: "user", column: "uid")),
         Column(name: "ownership",               type: .integer, isNullable: true),
         Column(name: "description",             type: .text,    isNullable: true),
         Column(name: "publish_time",            type: .integer, isNullable: true),
         Column(name: "c_time",                  type: .integer, isNullable: true),
-        Column(name: "subregion_id",  type: .integer, isNullable: true,
+        Column(name: "subregion_id",            type: .integer, isNullable: true,
                references: (table: "subregion", column: "subregion_id")),
         Column(name: "parts",                   type: .integer, isNullable: true),
         Column(name: "cover_url",               type: .text,    isNullable: true),
@@ -154,7 +155,7 @@ class VideoTable: EntityDBTable {
         try! self.upsertStatement.bind([
             ":aid":                      Int64(video.aid),
             ":title":                    video.title,
-            ":uploader_uid":             Int64(video.uploader_uid),
+            ":uploader_uid":             cast(video.uploader_uid, to: Int64.self),
             ":ownership":                video.ownership,
             ":description":              video.description,
             ":publish_time":             video.publish_time,
@@ -202,11 +203,24 @@ class VideoTable: EntityDBTable {
         video.state = castBinding(updated[12])
     }
     
-    lazy var updateIsTagListComplete = try! self.connection.prepare(#"""
-        UPDATE video SET is_tag_list_complete = 1 WHERE aid = ?
-        """#)
     func updateIsTagListCompleteToTrue(for aid: UInt64) {
-        try! self.updateIsTagListComplete.bind(Int64(aid)).run()
+        try! self.upsertStatement.bind([
+            ":aid":                      Int64(aid),
+            ":title":                    nil,
+            ":uploader_uid":             nil,
+            ":ownership":                nil,
+            ":description":              nil,
+            ":publish_time":             nil,
+            ":c_time":                   nil,
+            ":subregion_id":             nil,
+            ":parts":                    nil,
+            ":cover_url":                nil,
+            ":duration":                 nil,
+            ":cid":                      nil,
+            ":state":                    nil,
+            ":volatile":                 nil,
+            ":is_tag_list_complete":     1,
+            ]).run()
     }
     
     lazy var insertVideoTagStatement = try! self.connection.prepare(#"""
