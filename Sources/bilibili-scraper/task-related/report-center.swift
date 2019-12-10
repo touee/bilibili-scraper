@@ -50,7 +50,7 @@ class ReportCenter {
                 result += """
                     [users]: \(users.count) found, \(self.newFounds.users!.count) newly found
                         new [Submissions] tasks: \(self.newTasks.getCount(of: .user_submissions, with: .pending)) pass, \(self.newTasks.getCount(of: .user_submissions, with: .frozen)) frozen
-                        new [FolderList] tasks: \(self.newTasks.getCount(of: .folder_favoriteFolder, with: .pending)) pass, \(self.newTasks.getCount(of: .folder_favoriteFolder, with: .frozen)) frozen
+                        new [FolderList] tasks: \(self.newTasks.getCount(of: .folder_videoItems, with: .pending)) pass, \(self.newTasks.getCount(of: .folder_videoItems, with: .frozen)) frozen
                     """
             }
             if let tags = self.founds.tags {
@@ -73,7 +73,7 @@ class ReportCenter {
                 if !result.isEmpty { result += "\n" }
                 result += """
                     [folders]: \(folders.count) found, \(self.newFounds.folders!.count) newly found
-                        new [Videos] tasks: \(self.newTasks.getCount(of: .folder_favoriteFolder, with: .pending)) pass, frozen \(self.newTasks.getCount(of: .folder_favoriteFolder, with: .frozen))
+                        new [Videos] tasks: \(self.newTasks.getCount(of: .folder_videoItems, with: .pending)) pass, frozen \(self.newTasks.getCount(of: .folder_videoItems, with: .frozen))
                     """
             }
             return result

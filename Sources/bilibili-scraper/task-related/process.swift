@@ -35,7 +35,7 @@ let selectTaskWithDirectQueryIDStatement = try! scheduler.storage.db.prepare(#""
     SELECT * FROM queue WHERE type = ? AND query_id = ?
     """#)
 let selectFolderTaskStatement = try! scheduler.storage.db.prepare(#"""
-    SELECT * FROM queue WHERE type = \#(TaskType.folder_favoriteFolder) AND query_id = (
+    SELECT * FROM queue WHERE type = \#(TaskType.folder_videoItems) AND query_id = (
         SELECT folder_reference_id FROM query_for_folder
         WHERE owner_uid = ? AND fid = ?
     )

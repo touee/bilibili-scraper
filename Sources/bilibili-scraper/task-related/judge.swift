@@ -137,7 +137,7 @@ func judge(_ newFounds: EntityCollection,
     let videoRelatedVideosUncertainPriority: Double?
     let videoTagsUncertainPriority: Double?
     let uncertainFolders: [(uid: UInt64, fid: UInt64)]?
-    let folderVideosUncertainPriority: Double?
+    let folderVideoItemsUncertainPriority: Double?
     
     // user
     if let users = newFounds.users {
@@ -282,30 +282,30 @@ func judge(_ newFounds: EntityCollection,
     
     // folder
     if let folders = newFounds.folders {
-        let videosDecision = strategyGroup.makeDecision(for: .folder_favoriteFolder, on: query.type)
-        if videosDecision.isUncertain {
+        let videoItemsDecision = strategyGroup.makeDecision(for: .folder_videoItems, on: query.type)
+        if videoItemsDecision.isUncertain {
             uncertainFolders = folders.map { (uid: $0.owner_uid, fid: $0.fid) }
-            folderVideosUncertainPriority = videosDecision.priority
+            folderVideoItemsUncertainPriority = videoItemsDecision.priority
         } else {
             newTasks += folders.map {
                 let initialStatus: TaskInitialStatus
                 if $0.current_item_count == 0 {
                     initialStatus = .done
-                } else if videosDecision.shouldFreeze {
+                } else if videoItemsDecision.shouldFreeze {
                     initialStatus = .frozen
                 } else {
                     initialStatus = .pending
                 }
                 return $0.buildVideosQuery().buildTask().buildEnqueuedTask(
                     initialStatus: initialStatus,
-                    priority: videosDecision.priority)
+                    priority: videoItemsDecision.priority)
             }
             uncertainFolders = nil
-            folderVideosUncertainPriority = nil
+            folderVideoItemsUncertainPriority = nil
         }
     } else {
         uncertainFolders = nil
-        folderVideosUncertainPriority = nil
+        folderVideoItemsUncertainPriority = nil
     }
     
     // no subregions
@@ -408,7 +408,7 @@ func judge(_ newFounds: EntityCollection,
         
         if let uncertainFolders = uncertainFolders {
             // 第一页标签直接通过, 之后每页都会进行评估
-            if let priority = folderVideosUncertainPriority {
+            if let priority = folderVideoItemsUncertainPriority {
                 newTasks += uncertainFolders.map {
                     FavoriteFolderVideosQuery(uid: $0.uid, fid: $0.fid).buildTask().buildEnqueuedTask(
                         shouldFreeze: false,

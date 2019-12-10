@@ -44,7 +44,7 @@ func extractVideoStats() {
     var localVideoStatsDictArray = [[UInt64: (Double, GeneralVideoItem.VideoStats)]](
         repeating: [UInt64: (Double, GeneralVideoItem.VideoStats)](), count: iter.fileCount)
     
-    iter.randomly(typeFilter: [.video_relatedVideos, .tag_detail, .tag_top, .folder_favoriteFolder]) { i, fileNum, lineNo, timestamp, type, result in
+    iter.randomly(typeFilter: [.video_relatedVideos, .tag_detail, .tag_top, .folder_videoItems]) { i, fileNum, lineNo, timestamp, type, result in
         let fileName = "/raw_\(fileNum).log.csv"
         if lineNo == 0 { // 第一行
             print(fileName)
@@ -116,7 +116,7 @@ func checkCTime() {
     
     var localArray = [[(aid: UInt64, c_time: Int64?, c_time_in_user_submission: Int64?)]](repeating: [(aid: UInt64, c_time: Int64?, c_time_in_user_submission: Int64?)](), count: iter.fileCount)
     
-    iter.randomly(typeFilter: [.video_relatedVideos, .tag_detail, .tag_top, .folder_favoriteFolder, .user_submissions],
+    iter.randomly(typeFilter: [.video_relatedVideos, .tag_detail, .tag_top, .folder_videoItems, .user_submissions],
                   fileFilter: { _ in true }) { i, fileNum, lineNo, timestamp, type, result in
         let fileName = "/raw_\(fileNum).log.csv"
         if lineNo == 0 { // 第一行

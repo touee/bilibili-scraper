@@ -80,7 +80,7 @@ public struct TaskInQueue {
         
         self.type = TaskType(rawValue: Int(record[1] as! Int64))!
         switch self.type {
-        case .search, .folder_favoriteFolder:
+        case .search, .folder_videoItems:
             self.query = .referring(reference_id: record[2] as! Int64)
         case .video_relatedVideos, .video_tags, .user_submissions, .user_favoriteFolderList, .tag_detail, .tag_top:
             self.query = .direct(id: UInt64(record[2] as! Int64))
@@ -112,7 +112,7 @@ public struct TaskInQueue {
                                  order_id: order_id,
                                  duration_id: duration_id,
                                  subregion_id: subregion_id)
-        case .folder_favoriteFolder:
+        case .folder_videoItems:
             if record.count != 2 {
                 fatalError("Query item count not match!")
             }

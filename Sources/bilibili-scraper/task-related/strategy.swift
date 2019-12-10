@@ -133,7 +133,7 @@ struct StrategyGroup {
             switch self {
             case .do(let folderVideoListDecision):
                 switch new {
-                case .folder_favoriteFolder:
+                case .folder_videoItems:
                     return folderVideoListDecision
                 default:
                     fatalError()
@@ -399,7 +399,7 @@ struct StrategyGroup {
             return strategyGroup.onTagDetail.makeDecision(for: new)
         case .tag_top:
             return strategyGroup.onTagTop.makeDecision(for: new)
-        case .folder_favoriteFolder:
+        case .folder_videoItems:
             return strategyGroup.onFolderVideoList.makeDecision(for: new)
         }
     }

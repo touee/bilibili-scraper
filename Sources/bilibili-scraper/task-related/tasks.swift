@@ -24,7 +24,7 @@ public enum TaskType: Int {
     case tag_detail = 401
     case tag_top = 402
     
-    case folder_favoriteFolder = 501
+    case folder_videoItems = 501
     
     var subject: TaskSubject {
         switch self {
@@ -35,7 +35,7 @@ public enum TaskType: Int {
             return .user
         case .tag_detail, .tag_top:
             return .tag
-        case .folder_favoriteFolder:
+        case .folder_videoItems:
             return .folder
         }
     }
@@ -49,7 +49,7 @@ public enum TaskType: Int {
         case .user_favoriteFolderList: return "user/favorite_folder_list"
         case .tag_detail: return "tag/detail"
         case .tag_top: return "tag/top"
-        case .folder_favoriteFolder: return "folder/favorite_folder"
+        case .folder_videoItems: return "folder/favorite_folder"
         }
     }
     
@@ -62,7 +62,7 @@ public enum TaskType: Int {
         case "user/favorite_folder_list": self = .user_favoriteFolderList
         case "tag/detail": self = .tag_detail
         case "tag/top": self = .tag_top
-        case "folder/favorite_folder": self = .folder_favoriteFolder
+        case "folder/favorite_folder": self = .folder_videoItems
         default: fatalError("Unknown label!")
         }
     }
@@ -85,7 +85,7 @@ public enum TaskType: Int {
         case is TagTopQuery.Type:
             self = .tag_top
         case is FavoriteFolderVideosQuery.Type:
-            self = .folder_favoriteFolder
+            self = .folder_videoItems
         default: fatalError("Unknown query!")
         }
     }
@@ -106,7 +106,7 @@ public enum TaskType: Int {
             return try! TagDetailResult.extract(from: response)
         case .tag_top:
             return try! TagTopResult.extract(from: response)
-        case .folder_favoriteFolder:
+        case .folder_videoItems:
             return try! FavoriteFolderVideosResult.extract(from: response)
         }
     }

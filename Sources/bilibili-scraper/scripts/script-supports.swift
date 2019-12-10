@@ -74,7 +74,7 @@ class RawLogIterator {
                 result = try! TagDetailResult.extract(from: fakeResponse)
             case .tag_top:
                 result = try! TagTopResult.extract(from: fakeResponse)
-            case .folder_favoriteFolder:
+            case .folder_videoItems:
                 result = try! FavoriteFolderVideosResult.extract(from: fakeResponse)
             }
             block(i, fileNum, lineNo, Double(timestampString)!, type, result)
@@ -105,7 +105,7 @@ func extractGeneralizeVideoItems(type: TaskType, result: Any) -> [GeneralVideoIt
     case .tag_top:
         let result = result as! TagTopResult.Result
         return result
-    case .folder_favoriteFolder:
+    case .folder_videoItems:
         let result = result as! FavoriteFolderVideosResult.Result
         return result.archives
     default:

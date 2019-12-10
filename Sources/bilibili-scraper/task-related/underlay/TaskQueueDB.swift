@@ -29,7 +29,7 @@ func mergeMetadata(for type: TaskType, old: JSON?, new: JSON?) throws -> JSON? {
     case .video_tags: return out
     case .user_submissions: return out
     case .user_favoriteFolderList: return out
-    case .folder_favoriteFolder: return out
+    case .folder_videoItems: return out
     }
 }
 
@@ -222,7 +222,7 @@ public class TaskQueueDB {
                 oldSameTaskInQueue = try TaskInQueue(fromRecord: oldRecord)
             } else {
                 switch type {
-                case .search, .folder_favoriteFolder:
+                case .search, .folder_videoItems:
                     fatalError("Impossible")
                 default:
                     oldSameTaskInQueue = nil
@@ -279,7 +279,7 @@ public class TaskQueueDB {
             referrers: [referrerInQueue].compactMap { $0 }
         )
         switch type {
-        case .search, .folder_favoriteFolder:
+        case .search, .folder_videoItems:
             if let queryID = queryID {
                 logger.log(.warning, msg: "Currently, this branch is impossible to reach!",
                            functionName: #function, lineNum: #line, fileName: #file)
@@ -287,7 +287,7 @@ public class TaskQueueDB {
             } else {
                 try [
                     TaskType.search: insertSearchQueryStatement,
-                    TaskType.folder_favoriteFolder: insertFolderQueryStatement
+                    TaskType.folder_videoItems: insertFolderQueryStatement
                 ][type]!.bind(newTaskInQueue.queryRow).run()
                 let lastRowID = try self.selectLastRowIDStatement.run().fetchFirstOnlyRow()[0] as! Int64
                 newTaskInQueue.setQuery(toOuterReferenceID: lastRowID)
@@ -347,7 +347,7 @@ public class TaskQueueDB {
             case .referring(let reference_id):
                 nextTaskInQueue.convertQuery(fromOuterReferenceRecord: [
                     TaskType.search: self.selectSearchQueryWithReferrerIDStatement,
-                    TaskType.folder_favoriteFolder: self.selectFolderQueryWithReferrerIDStatement
+                    TaskType.folder_videoItems: self.selectFolderQueryWithReferrerIDStatement
                     ][nextTaskInQueue.type]!.bind(reference_id).fetchFirstOnlyRow()
                 )
             case .search, .folder:
