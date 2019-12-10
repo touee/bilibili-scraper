@@ -288,8 +288,16 @@ func judge(_ newFounds: EntityCollection,
             folderVideosUncertainPriority = videosDecision.priority
         } else {
             newTasks += folders.map {
-                $0.buildVideosQuery().buildTask().buildEnqueuedTask(
-                    shouldFreeze: videosDecision.shouldFreeze,
+                let initialStatus: TaskInitialStatus
+                if $0.current_item_count == 0 {
+                    initialStatus = .done
+                } else if videosDecision.shouldFreeze {
+                    initialStatus = .frozen
+                } else {
+                    initialStatus = .pending
+                }
+                return $0.buildVideosQuery().buildTask().buildEnqueuedTask(
+                    initialStatus: initialStatus,
                     priority: videosDecision.priority)
             }
             uncertainFolders = nil
