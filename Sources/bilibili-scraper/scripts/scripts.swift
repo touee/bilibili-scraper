@@ -1,6 +1,7 @@
 
 import Foundation
 import BilibiliAPI
+import BilibiliEntityDB
 import Dispatch
 
 func extractVideoStats() {
@@ -44,7 +45,7 @@ func extractVideoStats() {
     var localVideoStatsDictArray = [[UInt64: (Double, GeneralVideoItem.VideoStats)]](
         repeating: [UInt64: (Double, GeneralVideoItem.VideoStats)](), count: iter.fileCount)
     
-    iter.randomly(typeFilter: [.video_relatedVideos, .tag_detail, .tag_top, .folder_videoItems]) { i, fileNum, lineNo, timestamp, type, result in
+    iter.randomly(typeFilter: [.video_relatedVideos, .tag_detail, .tag_top, .folder_videoItems]) { i, fileNum, lineNo, timestamp, type, query, result in
         let fileName = "/raw_\(fileNum).log.csv"
         if lineNo == 0 { // 第一行
             print(fileName)
@@ -117,7 +118,7 @@ func checkCTime() {
     var localArray = [[(aid: UInt64, c_time: Int64?, c_time_in_user_submission: Int64?)]](repeating: [(aid: UInt64, c_time: Int64?, c_time_in_user_submission: Int64?)](), count: iter.fileCount)
     
     iter.randomly(typeFilter: [.video_relatedVideos, .tag_detail, .tag_top, .folder_videoItems, .user_submissions],
-                  fileFilter: { _ in true }) { i, fileNum, lineNo, timestamp, type, result in
+                  fileFilter: { _ in true }) { i, fileNum, lineNo, timestamp, type, query, result in
         let fileName = "/raw_\(fileNum).log.csv"
         if lineNo == 0 { // 第一行
             print(fileName)
@@ -152,6 +153,79 @@ func checkCTime() {
                     localArray[i].append((aid: video.aid, c_time: video.times.c, c_time_in_user_submission:  nil))
                 }
             }
+        }
+    }
+}
+
+func recoverUserInfo() {
+    let iter = RawLogIterator()
+    
+    let upsertUserInfo =  try! entityDB.connection.prepare(#"""
+        INSERT INTO user (uid, name, avatar_url, hides_folders, current_visible_video_count)
+        VALUES (:uid, NULL, NULL, :hides_folders, :current_visible_video_count)
+            ON CONFLICT(uid) DO UPDATE
+            SET
+                hides_folders = COALESCE(excluded.hides_folders, user.hides_folders),
+                current_visible_video_count = COALESCE(excluded.current_visible_video_count, user.current_visible_video_count)
+        """#)
+
+    var isFolderListAccessibleArray = Array(repeating: nil as Bool?, count: 48001)
+    var countArray = Array(repeating: nil as Int?, count: 48001)
+    var lock = NSLock()
+    var n = 0
+    
+    iter.onError = { (label, query, error) in
+        if (error as? BadAPIResponseCodeError)?.code == 11208 {
+            let query = query as! UserFavoriteFolderListQuery
+            if (query.uid-1) % 10000 != 0 || query.uid > 480000001 { return }
+            lock.lock()
+            defer { lock.unlock() }
+            isFolderListAccessibleArray[Int((query.uid-1) / 10000)] = false
+        }
+    }
+    
+    iter.randomly(typeFilter: [.user_submissions, .user_favoriteFolderList],
+                  fileFilter: { _ in true }) { i, fileNum, lineNo, timestamp, type, query, result in
+        let fileName = "/raw_\(fileNum).log.csv"
+        if lineNo == 0 { // 第一行
+            print(fileName)
+            return
+        }
+        
+        guard let type = type else { // 完成所有行后
+            lock.lock()
+            defer { lock.unlock() }
+            n += 1
+            print("\(n)/\(iter.fileCount)", fileName, "done")
+            return
+        }
+                    
+        switch type {
+        case .user_favoriteFolderList:
+            let query = query as! UserFavoriteFolderListQuery
+            if (query.uid-1) % 10000 != 0 || query.uid > 480000001 { break }
+            lock.lock()
+            defer { lock.unlock() }
+            isFolderListAccessibleArray[Int((query.uid-1) / 10000)] = true
+        case .user_submissions:
+            let query = query as! UserSubmissionSearchQuery
+            if (query.uid-1) % 10000 != 0 || query.uid > 480000001 { break }
+            let result = result as! UserSubmissionSearchResult.Result
+            lock.lock()
+            defer { lock.unlock() }
+            countArray[Int((query.uid-1) / 10000)] = result.total_count
+        default: fatalError()
+        }
+    }
+    
+    try! entityDB.connection.transaction {
+        for (i, x) in zip(isFolderListAccessibleArray, countArray).enumerated() {
+            if i == 0 { continue }
+            try! upsertUserInfo.run([
+                ":uid": i * 10000 + 1,
+                ":hides_folders" : x.0!,
+                ":current_visible_video_count": x.1!
+            ])
         }
     }
 }
