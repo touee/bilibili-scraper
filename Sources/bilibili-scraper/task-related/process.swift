@@ -158,7 +158,10 @@ let taskResultEntityExtractorGroup = TaskResultEntityExtractorGroup(
                                       subregion_id: video.subregion_id, parts: nil, cover_url: video.cover_url, duration: video.duration, cid: nil, state: nil, stats: nil, volatile: video.other_interesting_stuff))
         }
         
-        return (.init(users: nil, tags: nil,
+        // note: result.uploader_name can be nil, that's expected
+        let user = UserEntity(uid: query.uid, name: result.uploader_name, avatar_url: nil)
+        
+        return (.init(users: [user], tags: nil,
                       videos: videos, folders: nil,
                       subregions: subregions),
                 .init(folderItmes: nil, videosTags: nil,
@@ -264,6 +267,8 @@ let taskResultEntityExtractorGroup = TaskResultEntityExtractorGroup(
             // 记录收藏信息
             folderItems.append(FolderVideo(aid: video.aid, favorite_time: video.favorite_time))
         }
+        
+        users.append(UserEntity(uid: query.uid, name: nil, avatar_url: nil))
         
         return (.init(users: users, tags: nil,
                       videos: videos, folders: nil,
