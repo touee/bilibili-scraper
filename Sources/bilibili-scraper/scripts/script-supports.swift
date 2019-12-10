@@ -18,7 +18,7 @@ class RawLogIterator {
         return self.fileNums.count
     }
     
-    func single(i: Int, fileNum: Int, typeFilter: Set<TaskType>, block: (Int, Int, Int, Double, TaskType?, Any?) -> Void) {
+    func single(i: Int, fileNum: Int, typeFilter: Set<TaskType>, block: (Int, Int, Int, Double, TaskType?, APIQuery?, Any?) -> Void) {
         let fileName = "raw_\(fileNum).log.csv"
         
         let content: String
@@ -34,7 +34,7 @@ class RawLogIterator {
         while let cols = reader.next() {
             lineNo += 1
             if lineNo == 0 {
-                block(i, fileNum, 0, 0.0, nil, nil)
+                block(i, fileNum, 0, 0.0, nil, nil, nil)
                 continue
             }
             
@@ -42,21 +42,29 @@ class RawLogIterator {
             if !typeFilter.contains(type) {
                 continue
             }
-            
+            let query = try! type.buildQuery(fromJSON: cols[4].data(using: .utf8)!)
             let timestampString = cols[2]
             let fakeResponse = Response(body: cols[5].data(using: .utf8)!, statusCode: 200)
             do {
                 _ = try checkAPIError(fakeResponse)
             } catch {
-                if let error = error as? BadAPIResponseCodeError {
-                    if error.code == 11208 {
-                        continue
+                var isErrorResolved = false
+                do {
+                    if let onError = self.onError {
+                        try onError(type.label, query, error)
+                        isErrorResolved = true
                     }
-                } else if error is EmptyBodyError {
+                } catch {}
+                switch true {
+                case isErrorResolved//,
+//                     (error as? BadAPIResponseCodeError)?.code == 11208,
+//                     error is EmptyBodyError
+                    :
+                    continue
+                default:
+                    print(error)
                     continue
                 }
-                print(error)
-                continue
             }
             let result: Any
             switch type {
@@ -67,7 +75,7 @@ class RawLogIterator {
             case .video_tags:
                 result = try! VideoTagsResult.extract(from: fakeResponse)
             case .user_submissions:
-                result = try! UserSubmissionsResult.extract(from: fakeResponse)
+                result = try! UserSubmissionSearchResult.extract(from: fakeResponse)
             case .user_favoriteFolderList:
                 result = try! UserFavoriteFolderListResult.extract(from: fakeResponse)
             case .tag_detail:
@@ -77,12 +85,12 @@ class RawLogIterator {
             case .folder_videoItems:
                 result = try! FavoriteFolderVideosResult.extract(from: fakeResponse)
             }
-            block(i, fileNum, lineNo, Double(timestampString)!, type, result)
+            block(i, fileNum, lineNo, Double(timestampString)!, type, query, result)
         }
-        block(i, fileNum, -1, 0.0, nil, nil)
+        block(i, fileNum, -1, 0.0, nil, nil, nil)
     }
     
-    func randomly(typeFilter: Set<TaskType>, fileFilter: ((Int) -> Bool)? = nil, block: (Int, Int, Int, Double, TaskType?, Any?) -> Void) {
+    func randomly(typeFilter: Set<TaskType>, fileFilter: ((Int) -> Bool)? = nil, block: (Int, Int, Int, Double, TaskType?, APIQuery?, Any?) -> Void) {
         DispatchQueue.concurrentPerform(iterations: self.fileCount) { (i) in
             let fileNum = fileNums[i]
             if let fileFilter = fileFilter, !fileFilter(fileNum) {
@@ -91,6 +99,8 @@ class RawLogIterator {
             single(i: i, fileNum: fileNum, typeFilter: typeFilter, block: block)
         }
     }
+    
+    var onError: ((String, APIQuery, Error) throws -> ())? = nil
     
 }
 
@@ -110,5 +120,29 @@ func extractGeneralizeVideoItems(type: TaskType, result: Any) -> [GeneralVideoIt
         return result.archives
     default:
         fatalError("Unexpected task type!")
+    }
+}
+
+extension TaskType {
+    func buildQuery(fromJSON json: Data) throws -> APIQuery {
+        let decoder = JSONDecoder()
+        switch self {
+        case .search:
+            return try decoder.decode(SearchQuery.self, from: json)
+        case .video_relatedVideos:
+            return try decoder.decode(VideoRelatedVideosQuery.self, from: json)
+        case .video_tags:
+            return try decoder.decode(VideoTagsQuery.self, from: json)
+        case .user_submissions:
+            return try decoder.decode(UserSubmissionSearchQuery.self, from: json)
+        case .user_favoriteFolderList:
+            return try decoder.decode(UserFavoriteFolderListQuery.self, from: json)
+        case .tag_detail:
+            return try decoder.decode(TagDetailQuery.self, from: json)
+        case .tag_top:
+            return try decoder.decode(TagTopQuery.self, from: json)
+        case .folder_videoItems:
+            return try decoder.decode(FavoriteFolderVideosQuery.self, from: json)
+        }
     }
 }
