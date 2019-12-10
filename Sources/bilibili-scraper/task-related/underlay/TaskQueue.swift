@@ -139,7 +139,8 @@ class TaskQueue {
         self.localLoop.execute {
             self.currentRunningTasks -= 1
             self.test_taskAmount += 1
-            print(self.test_taskAmount, self.currentRunningTasks)
+            logger.log(.info, msg: "accumulate tasks: \(self.test_taskAmount), running tasks: \(self.currentRunningTasks)",
+                functionName: #function, lineNum: #line, fileName: #file)
             if let TEST_RUN_LIMIT = TEST_RUN_LIMIT,
                 self.test_taskAmount > TEST_RUN_LIMIT {
                 print("Quit test")

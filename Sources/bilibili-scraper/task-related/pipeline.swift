@@ -72,7 +72,7 @@ let taskPipeline_part2//: Pipeline<APIQuery, TaskReport>
         let taskID = owned["taskID"] as! Int64
         let query = owned["$input"] as! APIQuery
         let status = reportCenter.snapshot(of: taskID)
-        logger.log(.info, msg: "\n任务 \(taskID) [\(query)] 汇报:\n" + status.description,
+        logger.log(.info, msg: "\nTask \(taskID) [\(query)] reports:\n" + status.description,
                    functionName: #function, lineNum: #line, fileName: #file)
         return (tasks, report) } }
 

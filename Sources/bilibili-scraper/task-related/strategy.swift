@@ -3,6 +3,7 @@ struct StrategyGroup {
         case pass(priority: Double = 0)
         case uncertain(priority: Double = 0)
         case freeze
+        case ignore
         
         var isUncertain: Bool {
             if case .uncertain(priority: _) = self {
@@ -26,6 +27,8 @@ struct StrategyGroup {
                 return priority
             case .freeze:
                 return 0
+            case .ignore:
+                fatalError()
             }
         }
     }
@@ -225,6 +228,9 @@ struct StrategyGroup {
         case freezeAll
         
         func makeDecision(for new: TaskType) -> Decision {
+            if new.subject == .user { // self
+                return .ignore
+            }
             switch self {
             case .then(let videoDecisions):
                 switch new.subject {
